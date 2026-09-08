@@ -668,7 +668,10 @@ class Ledger:
     def _run(
         self, script: Path, args: list[str], env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess[str]:
-        full_env = dict(os.environ, LEDGER_GPG=self.steward.gpg, PYTHONIOENCODING="utf-8")
+        # Drop the host's GitHub Actions variables so a real runner (GITHUB_TRIGGERING_ACTOR,
+        # GITHUB_EVENT_PATH, ...) can never leak into a fixture's trusted context.
+        inherited = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")}
+        full_env = dict(inherited, LEDGER_GPG=self.steward.gpg, PYTHONIOENCODING="utf-8")
         if env:
             full_env.update(env)
         return subprocess.run(
