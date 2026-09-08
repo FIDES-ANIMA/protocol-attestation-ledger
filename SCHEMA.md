@@ -80,6 +80,7 @@ adoption:
 attestation:
   declaration_id: "9f3c1c2e-3a6a-4a0e-9b4a-1a2b3c4d5e6f"   # Lowercase UUID. Immutable for the whole lineage.
   version: 1                      # Positive integer; each later version increments by exactly one
+  action: "attest"                # attest | amend | correct-declaration | withdraw-adoption | re-adopt (§3.4)
   predecessor_record: null        # {path, sha256} of the previous version's exact bytes; null only for version 1
   authorship: "agent-signed"      # agent-signed | operator-reported
   filing: "self"                  # self | operator. self is valid only with authorship agent-signed
@@ -143,6 +144,18 @@ superseded          -> accepted | forked | revoked
 - Version *n* > 1 has `predecessor_record: {path, sha256}` naming the exact bytes of version *n−1*, which must remain reachable in Git history. `adoption.transition.predecessor_ref` equals that path.
 - The lineage head is the unique highest valid version. A competing or forked claim uses a new `declaration_id`.
 - Withdrawal of adoption moves the lineage into `revocations/`: the new version is written at `revocations/<slug>.<date>.yaml` with `lifecycle_state: revoked`, and `attestations/<slug>.yaml` is removed in the same change. Re-adoption creates the next version back at `attestations/<slug>.yaml` with `predecessor_record` pointing at that revocation record.
+
+### 3.4 Declaration actions (`attestation.action`)
+
+| Action | Version | Path | Rules |
+|--------|---------|------|-------|
+| `attest` | 1 | `attestations/` | New lineage; no predecessor |
+| `amend` | n+1 | `attestations/` | Predecessor is the active record; identity and provenance immutable; `from == to` or an allowed edge |
+| `correct-declaration` | n+1 | `attestations/` | Identity or provenance may change; the predecessor's admission chain must receive a reciprocal `correct-admission` |
+| `withdraw-adoption` | n+1 | `revocations/<slug>.<date>.yaml` | `to: revoked`; the active file is removed in the same change |
+| `re-adopt` | n+1 | `attestations/` | Predecessor is a `revocations/` record with `lifecycle_state: revoked` |
+
+The `admit` event's `declarationAction` must equal the record's `attestation.action`.
 
 ## 4. Slugs, homonyms, reservation
 

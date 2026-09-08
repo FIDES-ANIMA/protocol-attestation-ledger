@@ -1,0 +1,28 @@
+[project]
+name = "fpp-attestation-ledger"
+version = "1.0.0"
+description = "Validators for the FIDES-ANIMA FPP attestation ledger"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "workflow: end-to-end admission workflow matrix (slower; uses git and gpg)",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+ignore_missing_imports = true
+files = ["scripts", "tests"]
