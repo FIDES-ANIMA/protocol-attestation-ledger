@@ -1,4 +1,4 @@
-# Operator handoff — development track complete, implementation track gated
+# Operator handoff — development track complete, I0/I1 done, I2 and Axiom evidence gated
 
 Date: 2026-09-08. Plan: [`docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md`](../plans/2026-08-30-fpp-attestation-ledger-v1-staged.md).
 
@@ -15,12 +15,12 @@ Every value below marked **queried** was read from the live environment on this 
 | D4 `scripts/validate.py` | done | 94 declaration-side cases green |
 | D5 `scripts/verify-signatures.py` | done | 51 admission-side cases green, including expired-subkey policy and GNUPGHOME hygiene |
 | D6 CI + helpers + fixture proof | done | `.github/workflows/validate.yml`, `scripts/ci-context.py`, `scripts/prepare-admission.py`, `scripts/sign-admission.py`, `scripts/promote-admission.py`; full §7.2 matrix and negative trials pass against a bare origin |
-| D7 seed YAML | **gated on I3** | must not start until Axiom's `fpp_id` is confirmed and whether Axiom signs these exact bytes is recorded |
+| D7 seed YAML | **half done** | `attestations/hermes-default.yaml` committed on `intake/ovrsr/seeds`, intake-mode CI green (§4.2). `attestations/axiom.yaml` drafted at `docs/runbooks/axiom.seed-draft.yaml` (untracked); blocked on five operator-supplied evidence fields (§6) |
 | D8 README polish | done | check name `ledger-validation`, consume path, provenance-split counts, helper flow |
 
 Local toolchain used: Python 3.12 venv (`.venv/`), GnuPG 2.4.9 (Gpg4win), `ruff`, `mypy`; all clean. CI pins Python 3.11 per the plan; the code uses nothing newer than 3.11.
 
-Repository head at handoff: `ed9aa67 Add CI workflow, admission helpers, and workflow integration proof` (all commits unsigned; the first pinned-subkey commit is the I2 `workflow-smoke`).
+Repository `main` at handoff: `ada6952 Make fixture subprocesses hermetic against the host's GITHUB_* environment` (all commits unsigned; the first pinned-subkey commit is the I2 `workflow-smoke`).
 
 ## 2. Live environment (queried 2026-09-08)
 
@@ -73,6 +73,20 @@ gh run view <run-id> --repo FIDES-ANIMA/protocol-attestation-ledger             
 
 The first run is in `main` mode over an empty ledger; both validators exit 0 on zero records (tested: `test_main_mode_empty_tree_passes`).
 
+### 4.1 Recorded result (2026-09-08)
+
+| Item | Value (queried) |
+|------|-----------------|
+| Pre-push scans | secret pattern scan matched only this runbook's own command text and the inert fixture fragments in `tests/conftest.py`, `scripts/ledgerlib.py`; `.resources` history empty |
+| First push | `58d3491` → run [34284107472](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34284107472) **failed**: 2 of 165 tests. Cause: the runner's real `GITHUB_TRIGGERING_ACTOR=ovrsr` leaked into the `ci-context.py` fixture subprocesses. Not reproducible locally without that variable. |
+| Fix | `ada6952` strips inherited `GITHUB_*` from `Ledger._run`; reproduced locally with `GITHUB_TRIGGERING_ACTOR=ovrsr` before the fix (2 failed) and after (4 passed) |
+| I1 exit | run [34284458694](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34284458694) on `ada6952`: `success`, `mode=main`, 165 passed |
+| Check-run name | `gh api repos/FIDES-ANIMA/protocol-attestation-ledger/commits/ada6952a5da0c2bb650697a3012259b914b636a2/check-runs --jq '.check_runs[].name'` → `ledger-validation` |
+
+### 4.2 Seed intake PR (D7, partial)
+
+[PR #1](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/1), draft, author `ovrsr`, head `intake/ovrsr/seeds` @ `849be38c15441daf23211bd2bbd35c3eba233159`. Run [34284862865](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34284862865): `success`, `mode=intake`, `1 declaration(s)`. This is the first live intake-mode proof (operator-authority match on `github:ovrsr`, base-repository branch under `intake/ovrsr/`). Do not admit it before I2 completes and `attestations/axiom.yaml` is added.
+
 ## 5. I2 — allowlist, rulesets, disposable proof
 
 ### 5.1 Steward actor allowlist (blocks every admission-mode run until committed)
@@ -94,6 +108,8 @@ gh api repos/FIDES-ANIMA/protocol-attestation-ledger/commits/<sha>/check-runs --
 gh api repos/FIDES-ANIMA/protocol-attestation-ledger --jq '{allow_merge_commit,allow_squash_merge,allow_rebase_merge,web_commit_signoff_required}'
 ```
 
+Queried 2026-09-08 after I1: `rulesets` → `[]` (none); `branches/main/protection` → HTTP 404 `Branch not protected`; repository → `allow_merge_commit: true, allow_squash_merge: true, allow_rebase_merge: true, web_commit_signoff_required: false`; check-runs on `ada6952` → `ledger-validation`. Protections are therefore entirely unset; I2 starts from zero.
+
 Save the sanitized outputs under `docs/runbooks/` as the proof record. Required check name is `ledger-validation` (job name in `.github/workflows/validate.yml`); confirm it from the check-runs query, not from this file.
 
 ### 5.3 Disposable repository
@@ -105,9 +121,23 @@ Create a throwaway repo under `FIDES-ANIMA`, push this same `main`, apply the in
 - Pin `actions/checkout` and `actions/setup-python` to commit SHAs (currently tag-pinned `@v4` / `@v5`); take the SHAs from `gh api repos/actions/checkout/git/ref/tags/<tag>`.
 - Confirm `GITHUB_TRIGGERING_ACTOR` semantics on re-runs match the authority rule (re-runner ≠ operator fails closed by design).
 
-## 6. I3 — Axiom identity confirmation (D7 gate)
+## 6. I3 — Axiom identity confirmation (D7 gate) and remaining Axiom inputs
 
-Confirm Axiom's `fpp_id` out of band and record (a) the confirmed identifier and (b) whether Axiom will sign the exact seed bytes with that key. D7 then writes `attestations/axiom.yaml` (agent-signed only if (b) is yes; otherwise `operator-reported`, `fpp_id` explicitly claimed) and `attestations/hermes-default.yaml` (`reviewed`, `fpp_id: null`, `operator-reported`, `prompt-only`). Seeds go through intake like any other filing; no steward artifacts in that PR.
+Recorded 2026-09-08: (a) `fpp_id` `fpp:ed25519:cbe3226bbaaa9a883b7750368bfd8f59987b00dd3931511e7a37b3383b3181b0` confirmed by the operator; (b) no agent signature over the seed bytes was offered, so the seed is `operator-reported` / `filing: operator`. An agent-signed `correct-declaration` (same `declaration_id`, `version: 2`) can authenticate the `fpp_id` later without editing version 1.
+
+`attestations/axiom.yaml` is fully drafted at `docs/runbooks/axiom.seed-draft.yaml` (untracked, outside `attestations/` on purpose). With throwaway values in the five fields below it passes `validate.py --mode working --all`; with the placeholders it fails schema validation, so it cannot be admitted by accident. `SCHEMA.md` §3.2 requires these for any `reviewed → accepted` version 1 and they are operator facts that must not be invented:
+
+| Field | What is needed |
+|-------|----------------|
+| `adoption.transition.occurred_at` | UTC instant the acceptance took effect on 2026-08-24 |
+| `adoption.evidence.inspection.record_ref` | URI or path of the constitution inspection record (the `71bf60ad…` hash check) |
+| `adoption.evidence.inspection.inspected_at` | UTC instant of that inspection, `≤ accepted_at` |
+| `adoption.evidence.acceptance.record_ref` | URI or path of the acceptance / FPP handshake record |
+| `adoption.evidence.acceptance.accepted_at` | UTC instant of acceptance, `≤ occurred_at` |
+
+Then: `git checkout intake/ovrsr/seeds && mv docs/runbooks/axiom.seed-draft.yaml attestations/axiom.yaml`, fill the fields, `python scripts/validate.py --mode working --all`, commit, push; PR #1 re-runs in intake mode.
+
+If no inspection/acceptance record exists to reference, the honest alternative is to file Axiom as `reviewed` with `transition.from: null` (no evidence required) and move to `accepted` by `amend` once records exist. That is a scope change from plan §7 and is the operator's call.
 
 ## 7. Steward admission procedure (helpers, as tested)
 
@@ -143,8 +173,8 @@ Known helper limits, disclosed in code comments: `prepare-admission.py` derives 
 
 ## 8. Do not do
 
-- Do not push to `protocol-attestation-ledger` or any private repository as the ledger.
+- Do not push to any private repository as the ledger; `protocol-attestation-ledger` is confirmed PUBLIC.
 - Do not commit `stewards/authorized-github-actors.txt` with any login not returned by the membership query.
 - Do not copy anything from `.resources/` into the checkout; it is ignored and must stay untracked.
-- Do not write seed YAML before I3 is recorded.
+- Do not fill the Axiom evidence fields with anything but the operator's actual records; the placeholders are rejected by CI on purpose.
 - Do not sign the I2 `workflow-smoke` commit with anything but the pinned subkey `0dcd3952b0ba0130e02a5fc70dbbe66fec6d0c67`; `verify-signatures.py --mode admission` rejects any other key for new artifacts.
