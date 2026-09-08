@@ -504,6 +504,20 @@ def test_case29_admission_mode_valid_candidate_passes(git_ledger: Ledger) -> Non
     assert_passes(validate)
 
 
+def test_case29_workflow_smoke_empty_signed_commit_passes(git_ledger: Ledger) -> None:
+    """The I2 bootstrap: a pinned-key-signed commit that changes no ledger file passes admission mode."""
+    base = git_ledger.commit("main")
+    _, verify, validate = admission(git_ledger, base, head_ref="admission/workflow-smoke")
+    assert_passes(verify)
+    assert_passes(validate)
+
+
+def test_case29_workflow_smoke_unsigned_empty_commit_fails(git_ledger: Ledger) -> None:
+    base = git_ledger.commit("main")
+    _, verify, _ = admission(git_ledger, base, sign=False, head_ref="admission/workflow-smoke")
+    assert_fails(verify, "commit")
+
+
 def test_case29a_admission_mode_missing_record_signature_fails(git_ledger: Ledger) -> None:
     base = git_ledger.commit("main")
     git_ledger.write_yaml(NOVA, declaration())
