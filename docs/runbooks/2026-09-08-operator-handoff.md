@@ -1,4 +1,4 @@
-# Operator handoff — development track and D7 complete, I0/I1 done, I2 gated
+# Operator handoff — D0–D8 and I0–I4 done; I2 smoke, I5–I8 need the steward key
 
 Date: 2026-09-08. Plan: [`docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md`](../plans/2026-08-30-fpp-attestation-ledger-v1-staged.md).
 
@@ -94,39 +94,93 @@ The first run is in `main` mode over an empty ledger; both validators exit 0 on 
 
 This is the live intake-mode proof for both filing authorities: operator-authority match on `github:ovrsr` (Hermes) and agent Ed25519 signature as authority (Axiom). Intake PRs are never merged; admission is the steward step in §7 after I2.
 
-## 5. I2 — allowlist, rulesets, disposable proof
+## 5. I2 — allowlist, rulesets, disposable proof, production protections
 
-### 5.1 Steward actor allowlist (blocks every admission-mode run until committed)
+### 5.1 Steward actor allowlist — done
 
-`stewards/authorized-github-actors.txt` does not exist in this repository; only the test fixtures create one. `ci-context.py`, `validate.py`, and `verify-signatures.py` all fail closed on `admission/*` branches until it exists. Populate it only from a live membership query:
+`stewards/authorized-github-actors.txt` = `ovrsr`, from `gh api orgs/FIDES-ANIMA/members --jq '.[].login'` (2026-09-08). Never write the fixture login `steward-bot` into it.
+
+### 5.2 Baseline queried before any protection (2026-09-08, after I1)
+
+`rulesets` → `[]`; `branches/main/protection` → HTTP 404 `Branch not protected`; repository → `allow_merge_commit: true, allow_squash_merge: true, allow_rebase_merge: true, web_commit_signoff_required: false`; check-runs on `ada6952` → `ledger-validation`. Description and topics set and queried back: `Authoritative record of FIDES-ANIMA-admitted FPP declarations`; `fpp, ai-governance, ai-autonomy, attestation, fides-anima`.
+
+### 5.3 Disposable proof — done, with one model revision
+
+Full record: [`2026-09-08-i2-protection-proof.md`](2026-09-08-i2-protection-proof.md). Ruleset bodies: [`rulesets/`](rulesets/). Summary:
+
+- Four rulesets: `ledger-main-history` (deletion, non-FF, linear history, verified signatures; **no bypass**), `ledger-main-review-and-check` (PR review + required check `ledger-validation`; bypass `OrganizationAdmin` always), `ledger-admission-branches-steward-only` (create/update/delete `admission/**`; bypass `OrganizationAdmin`), `ledger-admission-branches-signed` (verified signatures, non-FF on `admission/**`; **no bypass**).
+- Trials T1–T4 and T5b/T5c rejected as intended, including for the org admin.
+- **T5d finding:** `gh pr merge --squash --admin` landed a GitHub-signed squash commit on `main` with a red check. Revision: repository settings `allow_squash_merge: false`, `allow_rebase_merge: false` (merge commits stay enabled but are blocked by the unbypassable linear-history rule). T6 confirmed all three `--admin` merge methods are refused afterwards.
+- Rulesets require a **public** repository on the org's plan.
+- Disposable repo is archived, not deleted (`delete_repo` scope missing): operator runs `gh auth refresh -h github.com -s delete_repo && gh repo delete FIDES-ANIMA/ledger-protection-proof-20260908 --yes` and records it in the proof file.
+
+Resulting invariant: `main` and `admission/**` advance only through fast-forward pushes of commits with **GitHub-verified** signatures by an org admin. The check on the exact SHA is enforced by `promote-admission.py`'s re-query (GitHub cannot scope a bypass to a SHA); the steward allowlist and `intake/<login>/*` scoping are enforced by the validators.
+
+### 5.4 Production application
+
+The same four ruleset bodies and the two merge settings were applied to `FIDES-ANIMA/protocol-attestation-ledger` immediately after this runbook was pushed. From that moment the history ruleset blocks every unsigned push, including runbook edits; `main` changes only by steward-signed commits. Verify at any time:
 
 ```bash
-gh api orgs/FIDES-ANIMA/members --jq '.[].login'      # queried today: ovrsr
+gh api repos/FIDES-ANIMA/protocol-attestation-ledger/rulesets --jq '.[] | {id,name,enforcement}'
+gh api repos/FIDES-ANIMA/protocol-attestation-ledger --jq '{allow_merge_commit,allow_squash_merge,allow_rebase_merge}'
+# expected: 4 active rulesets named as in §5.3; {true,false,false}
 ```
 
-Write one lowercase login per line, commit, push through the normal path. Never write the fixture login `steward-bot` into it.
+Hardening still open: pin `actions/checkout` / `actions/setup-python` to commit SHAs (`gh api repos/actions/checkout/git/ref/tags/<tag>`); a workflow edit, therefore now a steward-signed commit.
 
-### 5.2 Query before writing any protection
+### 5.5 I7, then `workflow-smoke` (operator, offline machine)
+
+GitHub marks a commit **Verified** only if the signing key is uploaded to the committer's account and the committer email is both a UID on the key and a verified email of that account. The steward key's UID is `steward@fides-anima.org` (header of `.resources/FIDES-keys.txt`); `ovrsr`'s public email is `ovrsr.github@pm.me`. No steward secret key exists on this machine (both GnuPG keyrings queried empty). In order:
 
 ```bash
-gh api repos/FIDES-ANIMA/protocol-attestation-ledger/rulesets
-gh api repos/FIDES-ANIMA/protocol-attestation-ledger/branches/main/protection
-gh api repos/FIDES-ANIMA/protocol-attestation-ledger/commits/<sha>/check-runs --jq '.check_runs[].name'   # must list ledger-validation
-gh api repos/FIDES-ANIMA/protocol-attestation-ledger --jq '{allow_merge_commit,allow_squash_merge,allow_rebase_merge,web_commit_signoff_required}'
+gh auth refresh -h github.com -s admin:gpg_key,user            # interactive; adds the two missing scopes
+# In GitHub account settings add and verify steward@fides-anima.org on ovrsr (verification has no API).
+gh api -X POST user/gpg_keys -f name="FIDES-ANIMA steward" -F armored_public_key=@stewards/fides-anima.asc \
+  --jq '{key_id, emails:[.emails[]|{email,verified}]}'
+gh api user/gpg_keys --jq '.[] | select(.key_id|test("11CB1432$")) | {key_id, emails:[.emails[]|{email,verified}]}'
+# exit criterion: entry present and steward@fides-anima.org shows verified: true
 ```
 
-Queried 2026-09-08 after I1: `rulesets` → `[]` (none); `branches/main/protection` → HTTP 404 `Branch not protected`; repository → `allow_merge_commit: true, allow_squash_merge: true, allow_rebase_merge: true, web_commit_signoff_required: false`; check-runs on `ada6952` → `ledger-validation`. Protections are therefore entirely unset; I2 starts from zero.
+Then the bootstrap commit, on the machine holding the secret key (`GNUPGHOME` = steward keyring):
 
-Save the sanitized outputs under `docs/runbooks/` as the proof record. Required check name is `ledger-validation` (job name in `.github/workflows/validate.yml`); confirm it from the check-runs query, not from this file.
+```bash
+git clone https://github.com/FIDES-ANIMA/protocol-attestation-ledger && cd protocol-attestation-ledger
+git config user.name  "FIDES-ANIMA Institute Steward"
+git config user.email "steward@fides-anima.org"
+git config user.signingkey "0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67!"    # pinned signing subkey, not the primary
+git config gpg.program "<path to gpg 2.4>"
+git checkout -b admission/workflow-smoke origin/main
+git commit --allow-empty -S -m "workflow-smoke: prove the production admission path (no ledger change)"
+git verify-commit --raw HEAD 2>&1 | grep -E "VALIDSIG .*0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67"   # must match
+git push origin admission/workflow-smoke                      # rejected until I7 makes the signature Verified
+gh pr create --base main --head admission/workflow-smoke --title "workflow-smoke" --body "I2 bootstrap; changes no ledger file."
+gh pr checks <n> --watch                                       # ledger-validation success on this exact SHA
+python scripts/promote-admission.py --repo FIDES-ANIMA/protocol-attestation-ledger --pr <n> \
+  --expected-head "$(git rev-parse HEAD)" --log ~/promote-smoke.json --dry-run
+python scripts/promote-admission.py --repo FIDES-ANIMA/protocol-attestation-ledger --pr <n> \
+  --expected-head "$(git rev-parse HEAD)" --log ~/promote-smoke.json
+```
 
-### 5.3 Disposable repository
+Fixture coverage for exactly this commit shape: `test_case29_workflow_smoke_empty_signed_commit_passes` / `_unsigned_empty_commit_fails`. I2 is frozen when the smoke SHA is `main` with green `admission` and `main` runs; record PR URL, SHA, and run ids here in a signed commit.
 
-Create a throwaway repo under `FIDES-ANIMA`, push this same `main`, apply the intended ruleset, then run the §7.2 matrix with the helpers. The offline fixture proof already covers the same sequence (`tests/test_workflow_integration.py::test_matrix_full_lineage_journey`); the disposable run proves GitHub's bypass/required-check behavior, which the fixtures cannot. Record every PR URL, head SHA, check-run URL, and result. Delete the repo afterwards and record the deletion.
+### 5.6 I5 — admit the seeds (operator, after 5.5)
 
-### 5.4 Hardening to apply in the same pass
+Live values as of this runbook: intake PR **#1**, head **`a91c47360514da6dbcea78553ac0d96f715e5e37`**, author `ovrsr`, check `ledger-validation` success (run 34288054222). Re-query before use; `query-intake` refuses a moved head.
 
-- Pin `actions/checkout` and `actions/setup-python` to commit SHAs (currently tag-pinned `@v4` / `@v5`); take the SHAs from `gh api repos/actions/checkout/git/ref/tags/<tag>`.
-- Confirm `GITHUB_TRIGGERING_ACTOR` semantics on re-runs match the authority rule (re-runner ≠ operator fails closed by design).
+```bash
+python scripts/prepare-admission.py query-intake --repo FIDES-ANIMA/protocol-attestation-ledger --pr 1 \
+  --expected-head a91c47360514da6dbcea78553ac0d96f715e5e37 --out ~/review-seeds.json
+git fetch origin main refs/pull/1/head
+python scripts/prepare-admission.py build --action attest --action-id seeds-2026-09 \
+  --main-ref "$(git rev-parse origin/main)" --intake-ref a91c47360514da6dbcea78553ac0d96f715e5e37 \
+  --review-json ~/review-seeds.json --reason-code intake-reviewed \
+  --reason "Steward reviewed PR #1: hermes-default operator-reported reviewed; axiom agent-signed accepted." \
+  --request-source-type github-pr --request-ref https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/1 \
+  --requested-by github:ovrsr --authority-basis github-pr-author-match --authority-principal github:ovrsr \
+  --manifest ~/manifest-seeds.json
+```
+
+The `--authority-*` values describe the operator-reported record (Hermes). The helper assigns `agent-signature` / Axiom's `fpp_id` to Axiom's event itself, because `verify-signatures.py` requires that for an agent-signed record (`test_mixed_provenance_intake_gets_per_record_authority`; a mixed PR could not be admitted in one candidate before this fix). Then offline: `sign-admission.py --manifest ~/manifest-seeds.json`, push `admission/seeds-2026-09`, open the PR, wait for green on the exact SHA, `promote-admission.py --pr <n> --expected-head <sha> --intake-review-json ~/review-seeds.json`. Close PR #1 with a link to the two `0001` events. I6 (fresh-clone consume) follows.
 
 ## 6. I3 — Axiom identity and the seed bytes (recorded)
 

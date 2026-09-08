@@ -346,7 +346,21 @@ class Builder:
             chain_dir = self.root / "admissions"
             if any(chain_dir.glob(f"{slug}.{sha}.*")):
                 raise Rejected(f"admission artifacts for {slug}.{sha[:12]} already exist on main")
-            event = self.base_event(rec, seq=1, action="admit", status="admitted", declaration_action=rec.action)
+            # verify-signatures.py requires authority.basis agent-signature for an agent-signed record and forbids
+            # it for an operator-reported one. An intake PR may carry both kinds, so the authority is decided per
+            # record: an agent-signed record's authority is its own canonical-payload signature (already verified
+            # by the intake re-check), and the CLI --authority-* values describe the operator-reported records.
+            authority: dict[str, Any] | None = None
+            if rec.authorship == "agent-signed":
+                authority = {"basis": "agent-signature", "principal": rec.fpp_id, "evidenceRef": None}
+            elif self.args.authority_basis == "agent-signature":
+                raise Rejected(
+                    f"{rec.path} is operator-reported; --authority-basis agent-signature cannot apply to it "
+                    "(use github-pr-author-match or out-of-band-request for the operator-reported records)"
+                )
+            event = self.base_event(
+                rec, seq=1, action="admit", status="admitted", declaration_action=rec.action, authority=authority
+            )
             event["request"]["sourceType"] = "github-pr"
             event["request"]["sourceRef"] = pr.get("html_url")
             event["review"] = {
@@ -434,16 +448,25 @@ class Builder:
 
     # -- event assembly -------------------------------------------------------------
     def base_event(
-        self, rec: L.Record, *, seq: int, action: str, status: str, declaration_action: str | None = None
+        self,
+        rec: L.Record,
+        *,
+        seq: int,
+        action: str,
+        status: str,
+        declaration_action: str | None = None,
+        authority: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         a = self.args
         if not a.reason or not a.reason_code:
             raise L.FailClosed("--reason and --reason-code are required; the helper never invents them")
         if not a.request_source_type or not a.request_ref or not a.requested_by:
             raise L.FailClosed("--request-source-type, --request-ref, and --requested-by are required")
-        if not a.authority_basis or not a.authority_principal:
-            raise L.FailClosed("--authority-basis and --authority-principal are required")
-        evidence_ref = parse_evidence([a.authority_evidence])[0] if a.authority_evidence else None
+        if authority is None:
+            if not a.authority_basis or not a.authority_principal:
+                raise L.FailClosed("--authority-basis and --authority-principal are required")
+            evidence_ref = parse_evidence([a.authority_evidence])[0] if a.authority_evidence else None
+            authority = {"basis": a.authority_basis, "principal": a.authority_principal, "evidenceRef": evidence_ref}
         return {
             "schemaVersion": 1,
             "sequence": seq,
@@ -470,7 +493,7 @@ class Builder:
                 "requestedBy": a.requested_by,
                 "evidence": parse_evidence(a.request_evidence or []),
             },
-            "authority": {"basis": a.authority_basis, "principal": a.authority_principal, "evidenceRef": evidence_ref},
+            "authority": authority,
             "review": None,
             "previousEvent": None,
             "correctionRef": None,

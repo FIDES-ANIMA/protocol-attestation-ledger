@@ -472,6 +472,36 @@ def test_operator_reported_attest_uses_pr_author_authority(flow: Flow) -> None:
     assert ev["actor"]["signingSubkeyRef"] == f"openpgp:{flow.ledger.steward.signing.lower()}"
 
 
+def test_mixed_provenance_intake_gets_per_record_authority(flow: Flow) -> None:
+    """One intake PR carrying an operator-reported and an agent-signed record (the production seed PR shape)."""
+    key = AgentKey()
+    hermes = dump_yaml(declaration(name="Hermes (default)", slug="hermes-default"))
+    axiom = dump_yaml(declaration(name="Axiom", key=key, state="accepted", grade="native-hook"))
+    head, review = flow.intake({"attestations/hermes-default.yaml": hermes, "attestations/axiom.yaml": axiom})
+    flow.admit("attest", "seeds", intake=head, review=review)
+    events = {p: json.loads(flow.read_main(p)) for p in event_files(flow)}
+    by_path = {ev["record"]["path"]: ev for ev in events.values()}
+    assert by_path["attestations/hermes-default.yaml"]["authority"] == {
+        "basis": "github-pr-author-match",
+        "principal": "github:alice",
+        "evidenceRef": {"uri": f"https://github.com/{REPOSITORY}/pull/1#issuecomment-1", "sha256": None},
+    }
+    assert by_path["attestations/axiom.yaml"]["authority"] == {
+        "basis": "agent-signature",
+        "principal": key.fpp_id,
+        "evidenceRef": None,
+    }
+
+
+def test_prepare_rejects_agent_signature_authority_for_operator_reported_record(flow: Flow) -> None:
+    head, review = flow.intake({NOVA: dump_yaml(declaration())})
+    result, _ = flow.prepare(
+        "attest", "nova", intake=head, review=review, authority_basis="agent-signature", authority_principal="fpp:x"
+    )
+    assert result.returncode != 0
+    assert "operator-reported" in output(result)
+
+
 # --------------------------------------------------------------------------- negative trials
 
 
