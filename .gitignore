@@ -1,0 +1,37 @@
+# Operator-held certificate source. Never tracked; published copy is stewards/fides-anima.asc.
+.resources/
+
+# OpenPGP secret material must never enter this repository.
+*.sec
+*.sec.asc
+*secret*.asc
+*secret*.gpg
+*private*.asc
+*private*.gpg
+*.key
+secring.gpg
+private-keys-v1.d/
+
+# Ephemeral GnuPG homes created by verify-signatures.py or operators.
+gnupghome*/
+.gnupg/
+gpg-tmp*/
+tmp-gnupghome*/
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Local tooling noise
+semantica.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+{
+  "slug": "fpp-attestation-ledger-init",
+  "status": "complete",
+  "phase": "specification",
+  "progress": { "discovery": 5, "expert": 5 },
+  "startedAt": "2026-08-27T17:19:00Z",
+  "lastUpdatedAt": "2026-08-27T17:40:00Z",
+  "completedAt": "2026-08-27T17:40:00Z"
+}
