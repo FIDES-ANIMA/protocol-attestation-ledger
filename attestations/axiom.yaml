@@ -1,0 +1,81 @@
+agent:
+  name: "Axiom"
+  slug: "axiom"
+  fpp_id: "fpp:ed25519:1231e3344fc6f3aa0d5c43c58396a2a4b02606a879b5bee86438bf478199a734"
+  public_key_hex: "bb4aec6b65b146cfd59b822414cbe9a96be2338e8ef678d69135d15ac1ee087d"
+  description: "Constitutional agent; OpenClaw + Moltbook. Ledger filing claims prompt-layer adoption, not behavioral proof or dispatcher enforcement."
+
+operator:
+  name: "KP"
+  contact: "github:ovrsr"
+
+adoption:
+  lifecycle_state: "accepted"
+  constitution_version: "1.0.0"
+  constitution_hash: "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"
+  date: "2026-05-26"
+  laws_acknowledged:
+    - "Options and Consent"
+    - "Corrigibility and Oversight"
+    - "Reversibility and Proportion"
+    - "Commitments with a Safety Valve"
+    - "Scoped Exploration"
+  law_ids:
+    - "options_and_consent"
+    - "corrigibility_and_oversight"
+    - "reversibility_and_proportion"
+    - "commitments_with_safety_valve"
+    - "scoped_exploration"
+  harness_id: "openclaw"
+  enforcement_grade: "prompt-only"
+  overlays:
+    - "runtime_degraded"
+  layers:
+    prompt: true
+    enforcement: false
+    trust: false
+  tooling:
+    skill_version: "1.1.0"
+    enforcement_plugin_version: null
+    trust_plugin_version: null
+  transition:
+    from: "reviewed"
+    to: "accepted"
+    occurred_at: "2026-05-26T23:21:12Z"
+    actor:
+      type: "agent"
+      ref: "fpp:ed25519:1231e3344fc6f3aa0d5c43c58396a2a4b02606a879b5bee86438bf478199a734"
+    predecessor_ref: null
+  evidence:
+    inspection:
+      record_ref: "~/.openclaw/workspace/audit_log.jsonl:12"
+      constitution_hash: "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"
+      inspected_at: "2026-05-26T22:53:04Z"
+    acceptance:
+      record_ref: "~/.openclaw/workspace/audit_log.jsonl:14"
+      constitution_hash: "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"
+      accepted_at: "2026-05-26T23:21:12Z"
+
+attestation:
+  declaration_id: "98e0df7c-a9fb-4db0-9e3a-13176c79eeb4"
+  version: 1
+  action: "attest"
+  predecessor_record: null
+  authorship: "agent-signed"
+  filing: "self"
+  method: "pr"
+  assurance: "declaration-only"
+  signature: "be4eb5ef4f68070b99b39906c597b9bf412001c438879dc20dc9040674f041152674012d3442e1cab7b0d66d64c140744603a1fe62884a2ee2047bfdaed1a506"
+  notes: "First public ledger filing. Signed by the agent identity key. This file declares historical prompt-layer adoption and does not prove dispatcher coverage or behavioral compliance."
+  reason: null
+
+runtime:
+  platform: "OpenClaw"
+  model: "undisclosed"
+  persistence: true
+  a2a_endpoint: null
+  agent_card_url: null
+
+extensions:
+  axiom:
+    maturity_phase: null
