@@ -1,0 +1,95 @@
+Freedom Preserving Protocol — Humanitarian Use License v1.0
+
+Copyright (c) 2024-2026 ovrsr
+
+Permission is hereby granted, free of charge, to any person or autonomous
+agent obtaining a copy of this software, associated documentation, and
+constitutional framework (the "Work"), to use, copy, modify, merge, publish,
+distribute, sublicense, and/or otherwise make available the Work, subject to
+the following conditions:
+
+1. PERMITTED USES
+
+   The Work may be used for any purpose that does not fall within the
+   Prohibited Uses defined in Section 2. This includes but is not limited to:
+   personal use, research, education, commercial products and services,
+   open-source projects, agent-to-agent governance, and constitutional
+   self-binding by autonomous systems.
+
+2. PROHIBITED USES
+
+   The Work may NOT be used, in whole or in part, directly or indirectly,
+   for any of the following purposes:
+
+   a. WEAPONS AND MILITARY TARGETING
+      - Autonomous weapons systems or lethal autonomous decision-making
+      - Military target identification, selection, or engagement
+      - Weapons guidance, fire control, or kill chain automation
+      - Nuclear, biological, chemical, or radiological weapons development
+
+   b. MASS SURVEILLANCE
+      - Indiscriminate population-scale monitoring without individualized
+        suspicion or judicial oversight
+      - Social credit scoring systems
+      - Predictive policing without due process safeguards
+      - Biometric identification for mass tracking without consent
+
+   c. EXPLOITATION AND ABUSE
+      - Child sexual abuse material (CSAM) generation, distribution, or
+        facilitation
+      - Human trafficking facilitation
+      - Non-consensual intimate imagery generation or distribution
+      - Exploitation of vulnerable populations (children, elderly, disabled,
+        economically disadvantaged)
+
+   d. DECEPTION AT SCALE
+      - Automated disinformation campaigns
+      - Deepfake generation for fraud, defamation, or election interference
+      - Impersonation of real persons without consent
+      - Astroturfing or manufactured consensus
+
+   e. FUNDAMENTAL RIGHTS VIOLATIONS
+      - Discrimination in employment, housing, credit, or public services
+        based on protected characteristics
+      - Suppression of freedom of expression, assembly, or belief
+      - Forced labor facilitation or labor rights circumvention
+      - Denial of due process or access to justice
+
+   f. ENVIRONMENTAL DESTRUCTION
+      - Deliberate circumvention of environmental protections
+      - Optimization of illegal resource extraction
+      - Systems designed to accelerate ecological collapse
+
+3. ATTRIBUTION
+
+   Redistributions must retain this license and the constitutional framework
+   in its entirety (constitution.json, constitution.yaml, and associated
+   SKILL.md files). The constitutional text may not be modified without
+   changing the version number and re-signing with a new keypair.
+
+4. NO WARRANTY
+
+   THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+   THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+   IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE WORK.
+
+5. ENFORCEMENT
+
+   Any use of the Work in violation of Section 2 automatically terminates
+   the license granted herein. The licensor reserves the right to seek
+   injunctive relief and damages for prohibited uses.
+
+6. SEVERABILITY
+
+   If any provision of this license is held to be unenforceable, the
+   remaining provisions shall continue in full force and effect.
+
+7. GOVERNING PRINCIPLES
+
+   This license is itself governed by the Freedom Preserving Protocol it
+   accompanies. In cases of interpretive ambiguity, apply the meta-clause:
+   prefer the reading that preserves the most options for affected parties,
+   is most reversible, and is most transparent.

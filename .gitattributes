@@ -1,0 +1,10 @@
+# Ledger records and signatures are content-addressed by exact bytes.
+# Never let Git rewrite their line endings on any platform.
+attestations/** -text
+revocations/** -text
+admissions/** -text
+stewards/** -text
+*.asc -text
+
+# Everything else normalizes to LF so hashes computed in CI match local checkouts.
+* text=auto eol=lf
