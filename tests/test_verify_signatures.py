@@ -41,8 +41,9 @@ def admission(
     head_repo: str = REPOSITORY,
 ) -> tuple[str, subprocess.CompletedProcess[str], subprocess.CompletedProcess[str]]:
     head = ledger.commit("admission candidate", sign=sign, subkey=subkey)
-    ctx = ledger.context(head_sha=head, base_sha=base, actor=actor, head_ref=head_ref,
-                         head_repo=head_repo, event_action="opened")
+    ctx = ledger.context(
+        head_sha=head, base_sha=base, actor=actor, head_ref=head_ref, head_repo=head_repo, event_action="opened"
+    )
     return (
         head,
         ledger.verify("admission", base_ref=base, context=ctx),
@@ -143,8 +144,9 @@ def test_case13_intake_mode_rejects_added_steward_signature(git_ledger: Ledger) 
     git_ledger.write_yaml(NOVA, declaration())
     git_ledger.steward.sign_detached(git_ledger.path(NOVA), git_ledger.path(git_ledger.record_sig_name(NOVA)))
     head = git_ledger.commit("pr with asc")
-    ctx = git_ledger.context(head_sha=head, base_sha=base, head_ref="intake/alice/nova",
-                             head_repo="FIDES-ANIMA/fpp-attestation-ledger")
+    ctx = git_ledger.context(
+        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+    )
     assert_fails(git_ledger.verify("intake", base_ref=base, context=ctx), ".record.asc")
 
 
@@ -153,8 +155,9 @@ def test_case13b_intake_mode_rejects_added_admission_event(git_ledger: Ledger) -
     git_ledger.write_yaml(NOVA, declaration())
     git_ledger.write("admissions/nova.abc.0001.json", "{}\n")
     head = git_ledger.commit("pr with event")
-    ctx = git_ledger.context(head_sha=head, base_sha=base, head_ref="intake/alice/nova",
-                             head_repo="FIDES-ANIMA/fpp-attestation-ledger")
+    ctx = git_ledger.context(
+        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+    )
     assert_fails(git_ledger.verify("intake", base_ref=base, context=ctx), "admissions/")
 
 
@@ -162,8 +165,9 @@ def test_intake_mode_clean_declaration_change_passes(git_ledger: Ledger) -> None
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration())
     head = git_ledger.commit("pr")
-    ctx = git_ledger.context(head_sha=head, base_sha=base, head_ref="intake/alice/nova",
-                             head_repo="FIDES-ANIMA/fpp-attestation-ledger")
+    ctx = git_ledger.context(
+        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+    )
     assert_passes(git_ledger.verify("intake", base_ref=base, context=ctx))
 
 
@@ -171,8 +175,9 @@ def test_intake_mode_requires_base_ref_matching_context(git_ledger: Ledger) -> N
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration())
     head = git_ledger.commit("pr")
-    ctx = git_ledger.context(head_sha=head, base_sha="2" * 40, head_ref="intake/alice/nova",
-                             head_repo="FIDES-ANIMA/fpp-attestation-ledger")
+    ctx = git_ledger.context(
+        head_sha=head, base_sha="2" * 40, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+    )
     assert_fails(git_ledger.verify("intake", base_ref=base, context=ctx), "base")
     assert_fails(git_ledger.verify("intake", context=ctx), "--base-ref")
 
@@ -219,8 +224,15 @@ def test_case18_withdraw_admission_leaves_declaration_bytes_and_lifecycle_unchan
     original = git_ledger.write_yaml(NOVA, declaration(key=key, state="accepted", grade="native-hook"))
     first = git_ledger.admit(NOVA)
     base = git_ledger.commit("admitted")
-    git_ledger.append_event(NOVA, git_ledger.sha256(NOVA), 2, action="withdraw-admission", status="withdrawn",
-                            previous=first, reason="Impersonation report upheld; publication withdrawn.")
+    git_ledger.append_event(
+        NOVA,
+        git_ledger.sha256(NOVA),
+        2,
+        action="withdraw-admission",
+        status="withdrawn",
+        previous=first,
+        reason="Impersonation report upheld; publication withdrawn.",
+    )
     _, verify, validate = admission(git_ledger, base, head_ref="admission/nova-withdraw")
     assert_passes(verify)
     assert_passes(validate)
@@ -289,8 +301,9 @@ def test_case27b_broken_previous_event_hash_fails(git_ledger: Ledger) -> None:
     git_ledger.write_yaml(NOVA, declaration())
     first = git_ledger.admit(NOVA)
     sha = git_ledger.sha256(NOVA)
-    event = git_ledger.event_template(NOVA, seq=2, action="withdraw-admission", declaration_action=None,
-                                      status="withdrawn", previous=first)
+    event = git_ledger.event_template(
+        NOVA, seq=2, action="withdraw-admission", declaration_action=None, status="withdrawn", previous=first
+    )
     event["previousEvent"]["sha256"] = "0" * 64
     git_ledger.write_event(f"admissions/nova.{sha}.0002.json", event)
     git_ledger.commit("broken chain")
@@ -390,14 +403,30 @@ def _admit_corrected_lineage(git_ledger: Ledger, *, reciprocal: bool = True) -> 
     v1_sha = sha256_bytes(v1_bytes)
     v1_event = git_ledger.admit(NOVA)
     git_ledger.commit("v1 admitted")
-    v2 = successor(v1, NOVA, v1_bytes, key=key,
-                   **{"attestation.authorship": "agent-signed", "attestation.filing": "self",
-                      "attestation.action": "correct-declaration", "agent.public_key_hex": key.public_key_hex})
+    v2 = successor(
+        v1,
+        NOVA,
+        v1_bytes,
+        key=key,
+        **{
+            "attestation.authorship": "agent-signed",
+            "attestation.filing": "self",
+            "attestation.action": "correct-declaration",
+            "agent.public_key_hex": key.public_key_hex,
+        },
+    )
     v2["attestation"]["signature"] = key.sign(v2)
     v2_bytes = git_ledger.write_yaml(NOVA, v2)
     v2_event = git_ledger.admit(NOVA, declaration_action="correct-declaration")
-    correction = git_ledger.event_template(NOVA, seq=2, action="correct-admission", declaration_action=None,
-                                           status="corrected", previous=v1_event, record_bytes=v1_bytes)
+    correction = git_ledger.event_template(
+        NOVA,
+        seq=2,
+        action="correct-admission",
+        declaration_action=None,
+        status="corrected",
+        previous=v1_event,
+        record_bytes=v1_bytes,
+    )
     correction["correctionRef"] = {
         "declarationId": v2["attestation"]["declaration_id"],
         "version": 2,
@@ -434,9 +463,18 @@ def test_case28c_correct_declaration_requires_correct_admission_on_old_record(gi
     v1_bytes = git_ledger.write_yaml(NOVA, v1)
     git_ledger.admit(NOVA)
     git_ledger.commit("v1")
-    v2 = successor(v1, NOVA, v1_bytes, key=key,
-                   **{"attestation.authorship": "agent-signed", "attestation.filing": "self",
-                      "attestation.action": "correct-declaration", "agent.public_key_hex": key.public_key_hex})
+    v2 = successor(
+        v1,
+        NOVA,
+        v1_bytes,
+        key=key,
+        **{
+            "attestation.authorship": "agent-signed",
+            "attestation.filing": "self",
+            "attestation.action": "correct-declaration",
+            "agent.public_key_hex": key.public_key_hex,
+        },
+    )
     v2["attestation"]["signature"] = key.sign(v2)
     git_ledger.write_yaml(NOVA, v2)
     git_ledger.admit(NOVA, declaration_action="correct-declaration")
@@ -565,11 +603,19 @@ def _withdraw_then_release(git_ledger: Ledger, *, release: bool) -> None:
     git_ledger.write_yaml(rev_path, revocation_of(active, NOVA, active_bytes, key=alice))
     first = git_ledger.admit(rev_path, declaration_action="withdraw-adoption")
     sha = git_ledger.sha256(rev_path)
-    second = git_ledger.append_event(rev_path, sha, 2, action="withdraw-admission", status="withdrawn",
-                                     previous=first, reason="Original principal confirmed gone.")
+    second = git_ledger.append_event(
+        rev_path,
+        sha,
+        2,
+        action="withdraw-admission",
+        status="withdrawn",
+        previous=first,
+        reason="Original principal confirmed gone.",
+    )
     if release:
-        event = git_ledger.event_template(rev_path, seq=3, action="slug-release", declaration_action=None,
-                                          status="withdrawn", previous=second)
+        event = git_ledger.event_template(
+            rev_path, seq=3, action="slug-release", declaration_action=None, status="withdrawn", previous=second
+        )
         event["slugReleased"] = True
         git_ledger.write_event(f"admissions/nova.{sha}.0003.json", event)
     git_ledger.commit("alice lineage withdrawn")
@@ -593,8 +639,9 @@ def test_slug_release_from_admitted_status_fails(git_ledger: Ledger) -> None:
     git_ledger.write_yaml(NOVA, declaration())
     first = git_ledger.admit(NOVA)
     sha = git_ledger.sha256(NOVA)
-    event = git_ledger.event_template(NOVA, seq=2, action="slug-release", declaration_action=None,
-                                      status="admitted", previous=first)
+    event = git_ledger.event_template(
+        NOVA, seq=2, action="slug-release", declaration_action=None, status="admitted", previous=first
+    )
     event["slugReleased"] = True
     git_ledger.write_event(f"admissions/nova.{sha}.0002.json", event)
     git_ledger.commit("bad release")

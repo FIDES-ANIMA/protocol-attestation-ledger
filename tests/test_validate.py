@@ -45,8 +45,9 @@ def test_empty_tree_passes_in_working_mode(ledger: Ledger) -> None:
 def test_valid_reviewed_and_accepted_records_pass(ledger: Ledger) -> None:
     key = AgentKey()
     ledger.write_yaml(NOVA, declaration())
-    ledger.write_yaml("attestations/axiom.yaml", declaration(name="Axiom", state="accepted", key=key,
-                                                           grade="native-hook"))
+    ledger.write_yaml(
+        "attestations/axiom.yaml", declaration(name="Axiom", state="accepted", key=key, grade="native-hook")
+    )
     assert_passes(ledger.validate())
 
 
@@ -111,15 +112,29 @@ def test_case04_legacy_alias_fails(ledger: Ledger) -> None:
     ],
 )
 def test_case05_private_runtime_url_fails(ledger: Ledger, url: str) -> None:
-    doc = declaration(runtime={"platform": "X", "model": "undisclosed", "persistence": True,
-                               "a2a_endpoint": url, "agent_card_url": None})
+    doc = declaration(
+        runtime={
+            "platform": "X",
+            "model": "undisclosed",
+            "persistence": True,
+            "a2a_endpoint": url,
+            "agent_card_url": None,
+        }
+    )
     ledger.write_yaml(NOVA, doc)
     assert_fails(ledger.validate(), NOVA, "runtime")
 
 
 def test_public_runtime_url_passes(ledger: Ledger) -> None:
-    doc = declaration(runtime={"platform": "X", "model": "undisclosed", "persistence": True,
-                               "a2a_endpoint": "https://agents.example.org/nova/a2a", "agent_card_url": None})
+    doc = declaration(
+        runtime={
+            "platform": "X",
+            "model": "undisclosed",
+            "persistence": True,
+            "a2a_endpoint": "https://agents.example.org/nova/a2a",
+            "agent_card_url": None,
+        }
+    )
     ledger.write_yaml(NOVA, doc)
     assert_passes(ledger.validate())
 
@@ -259,8 +274,9 @@ def test_revocation_by_steward_is_not_a_declaration_action(ledger: Ledger) -> No
     active = declaration()
     active_bytes = ledger.write_yaml(NOVA, active)
     ledger.remove(NOVA)
-    ledger.write_yaml("revocations/nova.2026-09-01.yaml",
-                      revocation_of(active, NOVA, active_bytes, revoked_by="steward"))
+    ledger.write_yaml(
+        "revocations/nova.2026-09-01.yaml", revocation_of(active, NOVA, active_bytes, revoked_by="steward")
+    )
     assert_fails(ledger.validate(), "revocations/nova.2026-09-01.yaml", "revoked_by")
 
 
@@ -313,8 +329,13 @@ def test_case15b_signing_subkey_pin_missing_from_cert_fails(ledger: Ledger) -> N
 
 def test_case16_first_accepted_without_structured_evidence_fails_even_with_notes(ledger: Ledger) -> None:
     key = AgentKey()
-    doc = declaration(state="accepted", key=key, grade="native-hook", evidence=None,
-                      notes="Inspected the constitution on 2026-08-20 and accepted it on 2026-08-24.")
+    doc = declaration(
+        state="accepted",
+        key=key,
+        grade="native-hook",
+        evidence=None,
+        notes="Inspected the constitution on 2026-08-20 and accepted it on 2026-08-24.",
+    )
     ledger.write_yaml(NOVA, doc)
     assert_fails(ledger.validate(), NOVA, "evidence")
 
@@ -396,8 +417,9 @@ def test_case22_agent_signed_filing_may_use_fpp_id_claimed_by_operator_report(le
 def test_two_operator_reports_claiming_same_fpp_id_pass_with_distinct_slugs(ledger: Ledger) -> None:
     key = AgentKey()
     ledger.write_yaml("attestations/nova.yaml", declaration(fpp_id=key.fpp_id, contact="github:alice"))
-    ledger.write_yaml("attestations/nova--bob.yaml", declaration(slug="nova--bob", fpp_id=key.fpp_id,
-                                                                 contact="github:bob"))
+    ledger.write_yaml(
+        "attestations/nova--bob.yaml", declaration(slug="nova--bob", fpp_id=key.fpp_id, contact="github:bob")
+    )
     assert_passes(ledger.validate())
 
 
@@ -518,9 +540,18 @@ def test_correct_declaration_may_upgrade_provenance_in_intake_mode(git_ledger: L
     v1 = declaration(fpp_id=key.fpp_id, contact="github:alice")
     v1_bytes = git_ledger.write_yaml(NOVA, v1)
     base = git_ledger.commit("v1")
-    v2 = successor(v1, NOVA, v1_bytes, key=key,
-                   **{"attestation.authorship": "agent-signed", "attestation.filing": "self",
-                      "attestation.action": "correct-declaration", "agent.public_key_hex": key.public_key_hex})
+    v2 = successor(
+        v1,
+        NOVA,
+        v1_bytes,
+        key=key,
+        **{
+            "attestation.authorship": "agent-signed",
+            "attestation.filing": "self",
+            "attestation.action": "correct-declaration",
+            "agent.public_key_hex": key.public_key_hex,
+        },
+    )
     v2["attestation"]["signature"] = key.sign(v2)
     git_ledger.write_yaml(NOVA, v2)
     _, result = intake(git_ledger, base, actor="courier", head_repo="courier/fpp-attestation-ledger", head_ref="x")
@@ -585,7 +616,9 @@ def test_withdraw_adoption_move_passes_in_intake_mode(git_ledger: Ledger) -> Non
 def test_case13_intake_adding_steward_asc_fails(git_ledger: Ledger) -> None:
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration())
-    git_ledger.write(git_ledger.record_sig_name(NOVA), "-----BEGIN PGP SIGNATURE-----\nAAAA\n-----END PGP SIGNATURE-----\n")
+    git_ledger.write(
+        git_ledger.record_sig_name(NOVA), "-----BEGIN PGP SIGNATURE-----\nAAAA\n-----END PGP SIGNATURE-----\n"
+    )
     _, result = intake(git_ledger, base)
     assert_fails(result, ".record.asc")
 
@@ -679,8 +712,9 @@ def test_intake_head_sha_must_match_context(git_ledger: Ledger) -> None:
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration())
     git_ledger.commit("pr")
-    ctx = git_ledger.context(head_sha="1" * 40, base_sha=base, head_ref="intake/alice/nova",
-                             head_repo="FIDES-ANIMA/fpp-attestation-ledger")
+    ctx = git_ledger.context(
+        head_sha="1" * 40, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+    )
     assert_fails(git_ledger.validate("intake", base_ref=base, context=ctx), "head")
 
 

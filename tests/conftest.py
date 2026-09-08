@@ -95,9 +95,7 @@ class AgentKey:
 
     def __init__(self) -> None:
         self.private = Ed25519PrivateKey.generate()
-        raw = self.private.public_key().public_bytes(
-            serialization.Encoding.Raw, serialization.PublicFormat.Raw
-        )
+        raw = self.private.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
         self.public_key_hex = raw.hex()
         self.fpp_id = "fpp:ed25519:" + hashlib.sha256(raw).hexdigest()
 
@@ -291,6 +289,11 @@ def successor(
         for part in parts[:-1]:
             target = target.setdefault(part, {})
         target[parts[-1]] = value
+    agent_signed = doc["attestation"]["authorship"] == "agent-signed"
+    doc["adoption"]["transition"]["actor"] = {
+        "type": "agent" if agent_signed else "operator",
+        "ref": doc["agent"]["fpp_id"] if agent_signed and doc["agent"]["fpp_id"] else doc["operator"]["contact"],
+    }
     if key is not None:
         doc["attestation"]["signature"] = key.sign(doc)
     return doc
@@ -321,56 +324,84 @@ class TestSteward:
         self.homedir = tempfile.mkdtemp(prefix="gnupghome-test-")
         os.chmod(self.homedir, stat.S_IRWXU)
         self.env = dict(os.environ, GNUPGHOME=self.homedir)
-        self._run(["--faked-system-time", FAKE_PAST, "--quick-gen-key", "Test Steward <test@example.invalid>",
-                   "ed25519", "cert", "never"])
+        self._run(
+            [
+                "--faked-system-time",
+                FAKE_PAST,
+                "--quick-gen-key",
+                "Test Steward <test@example.invalid>",
+                "ed25519",
+                "cert",
+                "never",
+            ]
+        )
         self.primary = self._fingerprints()[0]
         self._run(["--faked-system-time", FAKE_PAST, "--quick-add-key", self.primary, "ed25519", "sign", "10y"])
         self._run(["--faked-system-time", FAKE_PAST, "--quick-add-key", self.primary, "ed25519", "sign", "1d"])
         fprs = self._fingerprints()
         self.signing = fprs[1]
         self.expired = fprs[2]
-        out = subprocess.run([self.gpg, "--batch", "--export", "--armor", self.primary],
-                             capture_output=True, env=self.env, check=True)
+        out = subprocess.run(
+            [self.gpg, "--batch", "--export", "--armor", self.primary], capture_output=True, env=self.env, check=True
+        )
         self.public_armor = out.stdout.replace(b"\r\n", b"\n")
 
     def _run(self, args: list[str]) -> None:
         subprocess.run(
             [self.gpg, "--batch", "--quiet", "--pinentry-mode", "loopback", "--passphrase", "", *args],
-            capture_output=True, env=self.env, check=True,
+            capture_output=True,
+            env=self.env,
+            check=True,
         )
 
     def _fingerprints(self) -> list[str]:
         out = subprocess.run(
             [self.gpg, "--batch", "--with-colons", "--with-subkey-fingerprints", "--list-keys"],
-            capture_output=True, text=True, env=self.env, check=True,
+            capture_output=True,
+            text=True,
+            env=self.env,
+            check=True,
         )
         return [line.split(":")[9] for line in out.stdout.splitlines() if line.startswith("fpr:")]
 
-    def sign_detached(self, target: Path, output: Path | None = None, *, subkey: str | None = None,
-                      faked_time: str | None = None) -> Path:
+    def sign_detached(
+        self, target: Path, output: Path | None = None, *, subkey: str | None = None, faked_time: str | None = None
+    ) -> Path:
         output = output or target.with_name(target.name + ".asc")
         args = [self.gpg, "--batch", "--yes", "--quiet", "--pinentry-mode", "loopback", "--passphrase", ""]
         if faked_time:
             args += ["--faked-system-time", faked_time]
-        args += ["--local-user", (subkey or self.signing) + "!", "--detach-sign", "--armor",
-                 "-o", str(output), str(target)]
+        args += [
+            "--local-user",
+            (subkey or self.signing) + "!",
+            "--detach-sign",
+            "--armor",
+            "-o",
+            str(output),
+            str(target),
+        ]
         subprocess.run(args, capture_output=True, env=self.env, check=True)
         return output
 
     def git_signing_env(self, *, subkey: str | None = None) -> dict[str, str]:
         env = dict(self.env)
-        env.update({
-            "GIT_CONFIG_COUNT": "2",
-            "GIT_CONFIG_KEY_0": "gpg.program",
-            "GIT_CONFIG_VALUE_0": self.gpg,
-            "GIT_CONFIG_KEY_1": "user.signingkey",
-            "GIT_CONFIG_VALUE_1": (subkey or self.signing) + "!",
-        })
+        env.update(
+            {
+                "GIT_CONFIG_COUNT": "2",
+                "GIT_CONFIG_KEY_0": "gpg.program",
+                "GIT_CONFIG_VALUE_0": self.gpg,
+                "GIT_CONFIG_KEY_1": "user.signingkey",
+                "GIT_CONFIG_VALUE_1": (subkey or self.signing) + "!",
+            }
+        )
         return env
 
     def close(self) -> None:
-        subprocess.run([str(Path(self.gpg).with_name("gpgconf" + Path(self.gpg).suffix)), "--kill", "gpg-agent"],
-                       capture_output=True, env=self.env)
+        subprocess.run(
+            [str(Path(self.gpg).with_name("gpgconf" + Path(self.gpg).suffix)), "--kill", "gpg-agent"],
+            capture_output=True,
+            env=self.env,
+        )
         shutil.rmtree(self.homedir, ignore_errors=True)
 
 
@@ -398,8 +429,11 @@ class Ledger:
         self.write("stewards/expected-key-ref.txt", f"openpgp:{steward.primary.lower()}\n")
         self.write("stewards/expected-signing-subkey-ref.txt", f"openpgp:{steward.signing.lower()}\n")
         self.write("stewards/authorized-github-actors.txt", f"# verified steward logins\n{STEWARD_LOGIN}\n")
-        self.write(".gitattributes", "* text=auto eol=lf\nattestations/** -text\nrevocations/** -text\n"
-                   "admissions/** -text\nstewards/** -text\n*.asc -text\n")
+        self.write(
+            ".gitattributes",
+            "* text=auto eol=lf\nattestations/** -text\nrevocations/** -text\n"
+            "admissions/** -text\nstewards/** -text\n*.asc -text\n",
+        )
         self.has_git = False
 
     # -- files -------------------------------------------------------------
@@ -426,16 +460,21 @@ class Ledger:
         self.path(rel).unlink()
 
     # -- git ---------------------------------------------------------------
-    def git(self, *args: str, env: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+    def git(
+        self, *args: str, env: dict[str, str] | None = None, check: bool = True
+    ) -> subprocess.CompletedProcess[str]:
         base_env = dict(os.environ)
-        base_env.update({
-            "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
-            "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid",
-        })
+        base_env.update(
+            {
+                "GIT_AUTHOR_NAME": "Test",
+                "GIT_AUTHOR_EMAIL": "test@example.invalid",
+                "GIT_COMMITTER_NAME": "Test",
+                "GIT_COMMITTER_EMAIL": "test@example.invalid",
+            }
+        )
         if env:
             base_env.update(env)
-        return subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True,
-                              env=base_env, check=check)
+        return subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True, env=base_env, check=check)
 
     def git_init(self) -> None:
         self.git("init", "-q", "-b", "main")
@@ -504,15 +543,18 @@ class Ledger:
             },
             "request": {
                 "sourceType": "github-pr" if action == "admit" else "github-issue",
-                "sourceRef": f"https://github.com/{REPOSITORY}/pull/12" if action == "admit"
+                "sourceRef": f"https://github.com/{REPOSITORY}/pull/12"
+                if action == "admit"
                 else f"https://github.com/{REPOSITORY}/issues/40",
                 "requestedBy": requested_by,
                 "evidence": [],
             },
             "authority": {
-                "basis": "agent-signature" if doc["attestation"]["authorship"] == "agent-signed"
+                "basis": "agent-signature"
+                if doc["attestation"]["authorship"] == "agent-signed"
                 else "github-pr-author-match",
-                "principal": doc["agent"]["fpp_id"] if doc["attestation"]["authorship"] == "agent-signed"
+                "principal": doc["agent"]["fpp_id"]
+                if doc["attestation"]["authorship"] == "agent-signed"
                 else doc["operator"]["contact"],
                 "evidenceRef": {"uri": f"https://github.com/{REPOSITORY}/pull/12#issuecomment-1", "sha256": None},
             },
@@ -532,14 +574,16 @@ class Ledger:
             event["previousEvent"] = {"path": previous, "sha256": self.sha256(previous)}
         return event
 
-    def write_event(self, rel: str, event: dict[str, Any], *, subkey: str | None = None,
-                    faked_time: str | None = None) -> str:
+    def write_event(
+        self, rel: str, event: dict[str, Any], *, subkey: str | None = None, faked_time: str | None = None
+    ) -> str:
         self.write(rel, json.dumps(event, indent=2, sort_keys=True) + "\n")
         self.steward.sign_detached(self.path(rel), subkey=subkey, faked_time=faked_time)
         return rel
 
-    def admit(self, record_rel: str, *, seq: int = 1, subkey: str | None = None, faked_time: str | None = None,
-              **kw: Any) -> str:
+    def admit(
+        self, record_rel: str, *, seq: int = 1, subkey: str | None = None, faked_time: str | None = None, **kw: Any
+    ) -> str:
         """Write .record.asc (once) and an admission event with its signature."""
         sig = self.path(self.record_sig_name(record_rel))
         if not sig.exists():
@@ -548,13 +592,31 @@ class Ledger:
         rel = self.event_name(record_rel, seq)
         return self.write_event(rel, event, subkey=subkey, faked_time=faked_time)
 
-    def append_event(self, record_rel: str, record_sha: str, seq: int, *, action: str, status: str,
-                     previous: str, subkey: str | None = None, **kw: Any) -> str:
+    def append_event(
+        self,
+        record_rel: str,
+        record_sha: str,
+        seq: int,
+        *,
+        action: str,
+        status: str,
+        previous: str,
+        subkey: str | None = None,
+        **kw: Any,
+    ) -> str:
         """Append an admission-only event to an existing chain (record may no longer be at record_rel)."""
         slug = Path(record_rel).name.split(".")[0]
-        event = self.event_template(record_rel, seq=seq, action=action, declaration_action=None,
-                                    status=status, previous=previous,
-                                    record_bytes=kw.pop("record_bytes", None), record_path=record_rel, **kw)
+        event = self.event_template(
+            record_rel,
+            seq=seq,
+            action=action,
+            declaration_action=None,
+            status=status,
+            previous=previous,
+            record_bytes=kw.pop("record_bytes", None),
+            record_path=record_rel,
+            **kw,
+        )
         rel = f"admissions/{slug}.{record_sha}.{seq:04d}.json"
         return self.write_event(rel, event, subkey=subkey)
 
@@ -597,20 +659,36 @@ class Ledger:
                 "base_ref": "main",
                 "base_sha": base_sha or "0" * 40,
             }
-        rel = ".ledger-context.json"
-        self.write(rel, json.dumps(ctx, indent=2))
-        return str(self.path(rel))
+        self._context_counter = getattr(self, "_context_counter", 0) + 1
+        out = self.root.parent / f"context-{self._context_counter}.json"
+        out.write_text(json.dumps(ctx, indent=2), encoding="utf-8")
+        return str(out)
 
     # -- CLIs --------------------------------------------------------------
-    def _run(self, script: Path, args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def _run(
+        self, script: Path, args: list[str], env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
         full_env = dict(os.environ, LEDGER_GPG=self.steward.gpg, PYTHONIOENCODING="utf-8")
         if env:
             full_env.update(env)
-        return subprocess.run([sys.executable, str(script), *args], cwd=self.root, capture_output=True,
-                              text=True, encoding="utf-8", env=full_env)
+        return subprocess.run(
+            [sys.executable, str(script), *args],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=full_env,
+        )
 
-    def validate(self, mode: str = "working", *, base_ref: str | None = None, context: str | None = None,
-                 extra: Iterable[str] = (), env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def validate(
+        self,
+        mode: str = "working",
+        *,
+        base_ref: str | None = None,
+        context: str | None = None,
+        extra: Iterable[str] = (),
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         args = ["--mode", mode, "--schema", DECLARATION_SCHEMA, "--all"]
         if base_ref:
             args += ["--base-ref", base_ref]
@@ -619,13 +697,24 @@ class Ledger:
         args += list(extra)
         return self._run(VALIDATE, args, env)
 
-    def verify(self, mode: str = "main", *, base_ref: str | None = None, context: str | None = None,
-               extra: Iterable[str] = (), env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def verify(
+        self,
+        mode: str = "main",
+        *,
+        base_ref: str | None = None,
+        context: str | None = None,
+        extra: Iterable[str] = (),
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         args = [
-            "--cert", "stewards/fides-anima.asc",
-            "--expected-key-ref", "stewards/expected-key-ref.txt",
-            "--expected-signing-subkey-ref", "stewards/expected-signing-subkey-ref.txt",
-            "--mode", mode,
+            "--cert",
+            "stewards/fides-anima.asc",
+            "--expected-key-ref",
+            "stewards/expected-key-ref.txt",
+            "--expected-signing-subkey-ref",
+            "stewards/expected-signing-subkey-ref.txt",
+            "--mode",
+            mode,
         ]
         if base_ref:
             args += ["--base-ref", base_ref]
@@ -634,7 +723,9 @@ class Ledger:
         args += list(extra)
         return self._run(VERIFY, args, env)
 
-    def run_script(self, script: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def run_script(
+        self, script: Path, *args: str, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
         return self._run(script, list(args), env)
 
 
