@@ -1,4 +1,4 @@
-# Operator handoff — development track complete, I0/I1 done, I2 and Axiom evidence gated
+# Operator handoff — development track and D7 complete, I0/I1 done, I2 gated
 
 Date: 2026-09-08. Plan: [`docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md`](../plans/2026-08-30-fpp-attestation-ledger-v1-staged.md).
 
@@ -15,7 +15,7 @@ Every value below marked **queried** was read from the live environment on this 
 | D4 `scripts/validate.py` | done | 94 declaration-side cases green |
 | D5 `scripts/verify-signatures.py` | done | 51 admission-side cases green, including expired-subkey policy and GNUPGHOME hygiene |
 | D6 CI + helpers + fixture proof | done | `.github/workflows/validate.yml`, `scripts/ci-context.py`, `scripts/prepare-admission.py`, `scripts/sign-admission.py`, `scripts/promote-admission.py`; full §7.2 matrix and negative trials pass against a bare origin |
-| D7 seed YAML | **half done** | `attestations/hermes-default.yaml` committed on `intake/ovrsr/seeds`, intake-mode CI green (§4.2). `attestations/axiom.yaml` drafted at `docs/runbooks/axiom.seed-draft.yaml` (untracked); blocked on five operator-supplied evidence fields (§6) |
+| D7 seed YAML | done | both seeds on `intake/ovrsr/seeds` @ `a91c4736`, PR #1 intake-mode CI green with `2 declaration(s)` (§4.2). Axiom is agent-signed (§6) |
 | D8 README polish | done | check name `ledger-validation`, consume path, provenance-split counts, helper flow |
 
 Local toolchain used: Python 3.12 venv (`.venv/`), GnuPG 2.4.9 (Gpg4win), `ruff`, `mypy`; all clean. CI pins Python 3.11 per the plan; the code uses nothing newer than 3.11.
@@ -41,7 +41,7 @@ git remote -v
 
 1. **Repository name:** keep `FIDES-ANIMA/protocol-attestation-ledger`. Re-queried after the decision: `gh repo view FIDES-ANIMA/protocol-attestation-ledger --json visibility,isEmpty` → `PUBLIC`, `isEmpty: true`. The contract files were renamed in one commit (`schema/*.json` `$id`, `README.md`, `SCHEMA.md`, `pyproject.toml`, helper help text, test fixtures). The plan and requirements documents keep their historical name; the staged plan's I0 exit criterion is read as applying to this repository.
 2. **Steward actor allowlist:** `ovrsr` is the only authorized GitHub actor. `stewards/authorized-github-actors.txt` is committed with that single login; it matches the membership query in §2.
-3. **I3:** Axiom's `fpp_id` `fpp:ed25519:cbe3226bbaaa9a883b7750368bfd8f59987b00dd3931511e7a37b3383b3181b0` (plan §7) is confirmed by the operator. No statement was made that Axiom signs the seed bytes, so D7 files Axiom as `authorship: operator-reported`, `filing: operator`; the `fpp_id` is claimed, not authenticated, until an agent-signed `correct-declaration` arrives.
+3. **I3:** the operator initially confirmed the plan §7 value `fpp:ed25519:cbe3226b…3181b0`. Axiom then delivered a signed declaration whose `public_key_hex` fingerprints to `fpp:ed25519:1231e3344fc6f3aa0d5c43c58396a2a4b02606a879b5bee86438bf478199a734`; the signature verifies, so that is the authenticated identifier and the plan §7 value is superseded (origin of the discrepancy not explained by Axiom; recorded here so a steward can ask before admission). D7 therefore files Axiom as `authorship: agent-signed`, `filing: self`.
 
 ## 3. I0 — repository
 
@@ -83,9 +83,16 @@ The first run is in `main` mode over an empty ledger; both validators exit 0 on 
 | I1 exit | run [34284458694](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34284458694) on `ada6952`: `success`, `mode=main`, 165 passed |
 | Check-run name | `gh api repos/FIDES-ANIMA/protocol-attestation-ledger/commits/ada6952a5da0c2bb650697a3012259b914b636a2/check-runs --jq '.check_runs[].name'` → `ledger-validation` |
 
-### 4.2 Seed intake PR (D7, partial)
+### 4.2 Seed intake PR (D7, complete)
 
-[PR #1](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/1), draft, author `ovrsr`, head `intake/ovrsr/seeds` @ `849be38c15441daf23211bd2bbd35c3eba233159`. Run [34284862865](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34284862865): `success`, `mode=intake`, `1 declaration(s)`. This is the first live intake-mode proof (operator-authority match on `github:ovrsr`, base-repository branch under `intake/ovrsr/`). Do not admit it before I2 completes and `attestations/axiom.yaml` is added.
+[PR #1](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/1), author `ovrsr`, head `intake/ovrsr/seeds`.
+
+| Head | Contents | Run | Result |
+|------|----------|-----|--------|
+| `849be38c15441daf23211bd2bbd35c3eba233159` | `hermes-default.yaml` | [34284862865](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34284862865) | `success`, `mode=intake`, 1 declaration |
+| `a91c47360514da6dbcea78553ac0d96f715e5e37` | + `axiom.yaml` | [34288054222](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34288054222) | `success`, `mode=intake`, 2 declarations |
+
+This is the live intake-mode proof for both filing authorities: operator-authority match on `github:ovrsr` (Hermes) and agent Ed25519 signature as authority (Axiom). Intake PRs are never merged; admission is the steward step in §7 after I2.
 
 ## 5. I2 — allowlist, rulesets, disposable proof
 
@@ -121,23 +128,20 @@ Create a throwaway repo under `FIDES-ANIMA`, push this same `main`, apply the in
 - Pin `actions/checkout` and `actions/setup-python` to commit SHAs (currently tag-pinned `@v4` / `@v5`); take the SHAs from `gh api repos/actions/checkout/git/ref/tags/<tag>`.
 - Confirm `GITHUB_TRIGGERING_ACTOR` semantics on re-runs match the authority rule (re-runner ≠ operator fails closed by design).
 
-## 6. I3 — Axiom identity confirmation (D7 gate) and remaining Axiom inputs
+## 6. I3 — Axiom identity and the seed bytes (recorded)
 
-Recorded 2026-09-08: (a) `fpp_id` `fpp:ed25519:cbe3226bbaaa9a883b7750368bfd8f59987b00dd3931511e7a37b3383b3181b0` confirmed by the operator; (b) no agent signature over the seed bytes was offered, so the seed is `operator-reported` / `filing: operator`. An agent-signed `correct-declaration` (same `declaration_id`, `version: 2`) can authenticate the `fpp_id` later without editing version 1.
+Axiom returned a self-signed declaration in response to `docs/runbooks/2026-09-08-axiom-seed-request.md`. Two versions were delivered; the first (SHA-256 `c2105757…acf4`) carried evidence `record_ref`s as absolute host paths with a username and was discarded before any push. The second is what is filed:
 
-`attestations/axiom.yaml` is fully drafted at `docs/runbooks/axiom.seed-draft.yaml` (untracked, outside `attestations/` on purpose). With throwaway values in the five fields below it passes `validate.py --mode working --all`; with the placeholders it fails schema validation, so it cannot be admitted by accident. `SCHEMA.md` §3.2 requires these for any `reviewed → accepted` version 1 and they are operator facts that must not be invented:
+| Item | Value (verified locally, independent of Axiom's own check) |
+|------|--------------------------------------------------------------|
+| `attestations/axiom.yaml` SHA-256 | `5e4730a2eea75ada65124742a30b4ff231566f5024b103ac950251bbbf4a20d9` (git blob in PR #1 head `a91c4736`) |
+| `fpp_id` / `public_key_hex` | `fpp:ed25519:1231e334…9a734` / `bb4aec6b…087d`; SHA-256 of the raw key equals the id |
+| `attestation.signature` | verifies over the canonical payload (`ledgerlib.verify_ed25519`) |
+| Provenance | `agent-signed`, `filing: self`, `transition.actor.type: agent` |
+| Declared state | `accepted` from `reviewed`, `date: 2026-05-26`, `enforcement_grade: prompt-only` with overlay `runtime_degraded`, layers prompt only, skill `1.1.0`, no enforcement/trust plugin |
+| Evidence | `~/.openclaw/workspace/audit_log.jsonl:12` (inspection, `2026-05-26T22:53:04Z`) and `:14` (acceptance, `2026-05-26T23:21:12Z`); host-local, not publicly resolvable — steward review judges persuasiveness, CI does not |
 
-| Field | What is needed |
-|-------|----------------|
-| `adoption.transition.occurred_at` | UTC instant the acceptance took effect on 2026-08-24 |
-| `adoption.evidence.inspection.record_ref` | URI or path of the constitution inspection record (the `71bf60ad…` hash check) |
-| `adoption.evidence.inspection.inspected_at` | UTC instant of that inspection, `≤ accepted_at` |
-| `adoption.evidence.acceptance.record_ref` | URI or path of the acceptance / FPP handshake record |
-| `adoption.evidence.acceptance.accepted_at` | UTC instant of acceptance, `≤ occurred_at` |
-
-Then: `git checkout intake/ovrsr/seeds && mv docs/runbooks/axiom.seed-draft.yaml attestations/axiom.yaml`, fill the fields, `python scripts/validate.py --mode working --all`, commit, push; PR #1 re-runs in intake mode.
-
-If no inspection/acceptance record exists to reference, the honest alternative is to file Axiom as `reviewed` with `transition.from: null` (no evidence required) and move to `accepted` by `amend` once records exist. That is a scope change from plan §7 and is the operator's call.
+Axiom corrected the plan §7 operator-supplied facts downward (date, grade, tooling); the record claims prompt-layer adoption only. The bytes cannot be edited by anyone but Axiom; any change is a new signed version.
 
 ## 7. Steward admission procedure (helpers, as tested)
 
@@ -176,5 +180,5 @@ Known helper limits, disclosed in code comments: `prepare-admission.py` derives 
 - Do not push to any private repository as the ledger; `protocol-attestation-ledger` is confirmed PUBLIC.
 - Do not commit `stewards/authorized-github-actors.txt` with any login not returned by the membership query.
 - Do not copy anything from `.resources/` into the checkout; it is ignored and must stay untracked.
-- Do not fill the Axiom evidence fields with anything but the operator's actual records; the placeholders are rejected by CI on purpose.
+- Do not edit `attestations/axiom.yaml`; it is agent-signed. Any change is a new version signed by Axiom.
 - Do not sign the I2 `workflow-smoke` commit with anything but the pinned subkey `0dcd3952b0ba0130e02a5fc70dbbe66fec6d0c67`; `verify-signatures.py --mode admission` rejects any other key for new artifacts.
