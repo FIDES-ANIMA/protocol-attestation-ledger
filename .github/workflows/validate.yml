@@ -1,0 +1,97 @@
+# FPP attestation ledger validation.
+#
+# One job with one stable name (ledger-validation) runs in all three modes so a single required
+# status check can protect main. The mode is derived by scripts/ci-context.py from runner-provided
+# event data plus the committed steward actor allowlist, never from contributor-controlled text.
+#
+#   pull_request -> main from anywhere except a base-repo admission/* branch : intake
+#   pull_request -> main from a base-repo admission/* branch by a steward     : admission
+#   push to main                                                              : main
+#
+# The check is defined here but is not frozen as the live contract until I2 proves it against the
+# queried GitHub repository settings (docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md §5).
+
+name: ledger-validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ledger-validation-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  ledger-validation:
+    name: ledger-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the exact head commit with full history
+        uses: actions/checkout@v4
+        with:
+          # For pull requests validate the contributor's head, not GitHub's synthetic merge commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install GnuPG
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gnupg
+          gpg --version | head -n 1
+
+      - name: Install Python dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Derive validation mode and trusted context
+        id: ctx
+        run: python scripts/ci-context.py --out "$RUNNER_TEMP/ledger-context.json"
+
+      - name: Run validator test suite
+        run: python -m pytest -q
+
+      - name: Validate declarations
+        env:
+          MODE: ${{ steps.ctx.outputs.mode }}
+          BASE_SHA: ${{ steps.ctx.outputs.base_sha }}
+          CONTEXT: ${{ steps.ctx.outputs.context }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "main" ]; then
+            python scripts/validate.py --mode main --all --context "$CONTEXT" --summary
+          else
+            git cat-file -e "${BASE_SHA}^{commit}"
+            python scripts/validate.py --mode "$MODE" --all --base-ref "$BASE_SHA" --context "$CONTEXT"
+          fi
+
+      - name: Verify steward signatures and admission chains
+        env:
+          MODE: ${{ steps.ctx.outputs.mode }}
+          BASE_SHA: ${{ steps.ctx.outputs.base_sha }}
+          CONTEXT: ${{ steps.ctx.outputs.context }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "main" ]; then
+            python scripts/verify-signatures.py --mode main --context "$CONTEXT"
+          else
+            python scripts/verify-signatures.py --mode "$MODE" --base-ref "$BASE_SHA" --context "$CONTEXT"
+          fi

@@ -36,9 +36,18 @@ admissions/<slug>.<record-sha256>.<seq>.json.asc  signature over that event
 stewards/fides-anima.asc                          steward public certificate
 stewards/expected-key-ref.txt                     independent pin of the primary fingerprint
 stewards/expected-signing-subkey-ref.txt          independent pin of the signing subkey
+stewards/authorized-github-actors.txt             verified steward GitHub logins (admission branches only)
 schema/                                           JSON Schemas (declaration, admission event)
-scripts/                                          validate.py, verify-signatures.py, admission helpers
+scripts/validate.py                               declaration, lineage, authority, and history rules
+scripts/verify-signatures.py                      steward signatures and admission chains
+scripts/ci-context.py                             derives intake | admission | main for CI
+scripts/prepare-admission.py                      steward: build a candidate, emit unsigned events
+scripts/sign-admission.py                         steward, offline: sign artifacts and the commit
+scripts/promote-admission.py                      steward: verify and fast-forward main
+.github/workflows/validate.yml                    the single required check, ledger-validation
 ```
+
+Both validators exit `0` (valid), `1` (invalid), or `2` (fail-closed: base commit, trusted context, Git history, or GnuPG unavailable). A `2` is never treated as success.
 
 ## Currently admitted declarations
 
@@ -80,7 +89,28 @@ A first `accepted` declaration must include structured `adoption.evidence.inspec
 
 ## Admission
 
-Only the FIDES-ANIMA steward key admits. Offline, the steward signs the exact declaration bytes (`.record.asc`), an `admit` event, and one Git commit with signing subkey `0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67`, pushes it to an `admission/*` branch, waits for the `ledger-validate` check on that exact SHA, and fast-forwards `main` to it. The secret key never touches CI. Details: GOVERNANCE.md §5.
+Only the FIDES-ANIMA steward key admits. Intake PRs are never merged; the steward reproduces the reviewed bytes in a signed candidate and fast-forwards `main` to it. The secret key never touches CI. Details: GOVERNANCE.md §5.
+
+```text
+contributor PR ──ledger-validation (intake)──▶ steward review
+      │
+      ▼  prepare-admission.py query-intake / build      (online, no secret key)
+admission/<action-id> from exact current main + reviewed diff + unsigned event JSON
+      │
+      ▼  sign-admission.py                              (offline, steward GNUPGHOME)
+.record.asc per new declaration, .json.asc per event, one commit signed by the pinned subkey
+      │
+      ▼  push, open PR ──ledger-validation (admission)──▶ green on that exact SHA
+      │
+      ▼  promote-admission.py                           (re-queries, verifies, fast-forward only)
+main == candidate SHA ──ledger-validation (main)──▶ published
+```
+
+`prepare-admission.py build` refuses a moved PR head, a red or missing `ledger-validation` check, any non-declaration path in the intake diff, and any declaration hash that differs from the reviewed tree; it re-runs both validators in `intake` mode on the reviewed head before creating the branch. Every event field that is not derived from the reviewed bytes (`--reason`, `--request-*`, `--authority-*`) must be supplied explicitly. `sign-admission.py` recomputes every hash from the manifest and refuses on drift. `promote-admission.py` rejects a stale head, a fork or non-`admission/*` branch, a non-steward author or actor, a merge commit, and any candidate that current `main` is not an ancestor of; it pushes `<sha>:refs/heads/main` without force and confirms the remote.
+
+Admission-only actions (`mark-disputed`, `resolve-dispute`, `withdraw-admission`, `reinstate-admission`, `slug-release`) follow the same path with no declaration diff: `prepare-admission.py build --action <action> --record <path>` appends the next event to the record's chain without touching a declaration byte or its `lifecycle_state`.
+
+The CI check name is `ledger-validation`. The workflow and helpers are exercised against temporary Git histories in `tests/test_workflow_integration.py`; they become the live contract only after the disposable-repository proof in the staged plan (I2).
 
 ## Consuming the ledger
 
@@ -109,17 +139,18 @@ python scripts/verify-signatures.py --cert stewards/fides-anima.asc \
 rm -rf "$GNUPGHOME"
 ```
 
-`verify-signatures.py --mode main` prints each lineage head with its derived admission status and provenance. Maximum justified conclusion: FIDES-ANIMA admitted these bytes as declaration-only records; where provenance is `operator-reported`, the named operator reported the lifecycle state.
+`verify-signatures.py --mode main` prints one line per admission chain with its derived status (`admitted`, `disputed`, `withdrawn`, `corrected`), the record it binds, and that record's lifecycle and provenance. `validate.py --mode main --summary` prints the lineage heads and the provenance-split count of currently admitted declarations. Both run GnuPG only inside a throwaway `GNUPGHOME` and import only the committed certificate, so your own keyring is never consulted. Maximum justified conclusion: FIDES-ANIMA admitted these bytes as declaration-only records; where provenance is `operator-reported`, the named operator reported the lifecycle state.
 
 ## Development
 
 ```bash
 python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest
+python -m ruff check scripts tests && python -m ruff format --check scripts tests && python -m mypy scripts
 python scripts/validate.py --mode working --schema schema/attestation.schema.json --all
 ```
 
-Python 3.11, system GnuPG. Tests use generated throwaway certificates and temporary Git repositories; the real steward secret is never involved.
+Python 3.11, system GnuPG (on Windows set `LEDGER_GPG` to Gpg4win's `gpg.exe`; the MSYS `gpg` bundled with Git for Windows cannot use a native `GNUPGHOME`). Tests use generated throwaway certificates and temporary Git repositories; the real steward secret is never involved. `working` mode is for local editing only and is never release evidence.
 
 ## License
 

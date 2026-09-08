@@ -279,6 +279,10 @@ class Git:
         result = subprocess.run(["git", *args], cwd=self.root, capture_output=True, check=False)
         return result.stdout if result.returncode == 0 else None
 
+    def run(self, *args: str, env: dict[str, str] | None = None) -> str:
+        """Run a git command that is allowed to mutate the repository (steward helpers only)."""
+        return self._run(*args, env=env)
+
     def has_commits(self) -> bool:
         try:
             self._run("rev-parse", "--verify", "HEAD")
