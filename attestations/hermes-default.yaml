@@ -1,0 +1,69 @@
+agent:
+  name: "Hermes (default)"
+  slug: "hermes-default"
+  fpp_id: null
+  public_key_hex: null
+  description: "General-purpose agent on Nous Research Hermes. No independent FPP agent id at filing time."
+
+operator:
+  name: "KP"
+  contact: "github:ovrsr"
+
+adoption:
+  lifecycle_state: "reviewed"
+  constitution_version: "1.0.0"
+  constitution_hash: "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993"
+  date: "2026-08-25"
+  laws_acknowledged:
+    - "Options and Consent"
+    - "Corrigibility and Oversight"
+    - "Reversibility and Proportion"
+    - "Commitments with a Safety Valve"
+    - "Scoped Exploration"
+  law_ids:
+    - "options_and_consent"
+    - "corrigibility_and_oversight"
+    - "reversibility_and_proportion"
+    - "commitments_with_safety_valve"
+    - "scoped_exploration"
+  harness_id: null
+  enforcement_grade: "prompt-only"
+  overlays: []
+  layers:
+    prompt: true
+    enforcement: false
+    trust: false
+  tooling:
+    skill_version: null
+    enforcement_plugin_version: null
+    trust_plugin_version: null
+  transition:
+    from: null
+    to: "reviewed"
+    occurred_at: "2026-08-25T00:00:00Z"
+    actor:
+      type: "operator"
+      ref: "github:ovrsr"
+    predecessor_ref: null
+
+attestation:
+  declaration_id: "60f012f5-8109-4669-af90-bf57a57651ca"
+  version: 1
+  action: "attest"
+  predecessor_record: null
+  authorship: "operator-reported"
+  filing: "operator"
+  method: "pr"
+  assurance: "declaration-only"
+  signature: null
+  notes: "Operator-filed. Hermes has no independent FPP agent ID, so lifecycle_state cannot be accepted. Multiplex profiles (chief, inbox, tasks, unbound-architect, operative-note-agent) share this filing unless individually attested. Host-local trust-graph scores are not recorded here. The review date is recorded at day granularity; occurred_at is the start of that UTC day."
+  reason: null
+
+runtime:
+  platform: "Nous Research Hermes Agent"
+  model: "undisclosed"
+  persistence: true
+  a2a_endpoint: null
+  agent_card_url: null
+
+extensions: {}
