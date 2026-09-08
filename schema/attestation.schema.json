@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/FIDES-ANIMA/fpp-attestation-ledger/schema/attestation.schema.json",
+  "title": "FPP attestation ledger declaration",
+  "description": "One declaration-only FPP adoption filing. Vocabulary is frozen from Freedom Preserving Protocol v1.0.0 (constitution.json SHA-256 71bf60ad...1993). A valid record proves only that these bytes were filed; admission is recorded separately under admissions/.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agent", "operator", "adoption", "attestation"],
+  "properties": {
+    "agent": { "$ref": "#/$defs/agent" },
+    "operator": { "$ref": "#/$defs/operator" },
+    "adoption": { "$ref": "#/$defs/adoption" },
+    "attestation": { "$ref": "#/$defs/attestation" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "extensions": { "$ref": "#/$defs/extensions" },
+    "revocation": { "$ref": "#/$defs/revocation" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "adoption": { "properties": { "lifecycle_state": { "const": "revoked" } }, "required": ["lifecycle_state"] } } },
+      "then": { "required": ["revocation"] },
+      "else": { "not": { "required": ["revocation"] } }
+    },
+    {
+      "if": { "properties": { "attestation": { "properties": { "filing": { "const": "self" } }, "required": ["filing"] } } },
+      "then": { "properties": { "attestation": { "properties": { "authorship": { "const": "agent-signed" } } } } }
+    },
+    {
+      "if": { "properties": { "attestation": { "properties": { "authorship": { "const": "operator-reported" } }, "required": ["authorship"] } } },
+      "then": { "properties": { "attestation": { "properties": { "filing": { "const": "operator" }, "signature": { "type": "null" } } } } }
+    },
+    {
+      "if": { "properties": { "attestation": { "properties": { "authorship": { "const": "agent-signed" } }, "required": ["authorship"] } } },
+      "then": {
+        "properties": {
+          "agent": { "properties": { "fpp_id": { "$ref": "#/$defs/fppId" }, "public_key_hex": { "$ref": "#/$defs/hex64" } } },
+          "attestation": { "properties": { "signature": { "$ref": "#/$defs/hex128" } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "adoption": { "properties": { "lifecycle_state": { "enum": ["accepted", "inherited", "forked", "superseded"] } }, "required": ["lifecycle_state"] } } },
+      "then": { "properties": { "agent": { "properties": { "fpp_id": { "$ref": "#/$defs/fppId" } } } } }
+    },
+    {
+      "if": { "properties": { "attestation": { "properties": { "version": { "const": 1 } }, "required": ["version"] } } },
+      "then": { "properties": { "attestation": { "properties": { "predecessor_record": { "type": "null" }, "action": { "const": "attest" } } } } },
+      "else": { "properties": { "attestation": { "properties": { "predecessor_record": { "$ref": "#/$defs/recordRef" }, "action": { "enum": ["amend", "correct-declaration", "withdraw-adoption", "re-adopt"] } } } } }
+    }
+  ],
+  "$defs": {
+    "hex64": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hex128": { "type": "string", "pattern": "^[0-9a-f]{128}$" },
+    "fppId": {
+      "type": "string",
+      "pattern": "^fpp:ed25519:[0-9a-f]{64}$",
+      "description": "V2 agent identifier: SHA-256 fingerprint of the raw Ed25519 public key. Legacy fpp-<16 hex> aliases are rejected."
+    },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)?$" },
+    "isoDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "isoDateTime": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$" },
+    "ledgerPath": { "type": "string", "pattern": "^(attestations|revocations)/[A-Za-z0-9._-]+\\.yaml$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "nullableString": { "type": ["string", "null"] },
+    "recordRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/ledgerPath" },
+        "sha256": { "$ref": "#/$defs/hex64" }
+      }
+    },
+    "lifecycleState": { "enum": ["reviewed", "accepted", "externally-enforced", "inherited", "revoked", "forked", "superseded"] },
+    "overlayFlag": { "enum": ["coercion_suspected", "verification_failed", "key_compromised", "runtime_degraded"] },
+    "enforcementGrade": { "enum": ["native-hook", "tool-proxy", "prompt-only", "none"] },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug", "fpp_id", "public_key_hex"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "slug": { "$ref": "#/$defs/slug" },
+        "fpp_id": { "oneOf": [{ "$ref": "#/$defs/fppId" }, { "type": "null" }] },
+        "public_key_hex": { "oneOf": [{ "$ref": "#/$defs/hex64" }, { "type": "null" }] },
+        "description": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "contact"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "contact": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "evidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_ref", "constitution_hash"],
+      "properties": {
+        "record_ref": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "constitution_hash": { "$ref": "#/$defs/hex64" },
+        "inspected_at": { "$ref": "#/$defs/isoDateTime" },
+        "accepted_at": { "$ref": "#/$defs/isoDateTime" }
+      }
+    },
+    "adoption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle_state", "constitution_version", "constitution_hash", "date",
+        "laws_acknowledged", "law_ids", "enforcement_grade", "transition"
+      ],
+      "properties": {
+        "lifecycle_state": { "$ref": "#/$defs/lifecycleState" },
+        "constitution_version": { "const": "1.0.0" },
+        "constitution_hash": {
+          "const": "71bf60ad917c5413cc17b0f65e83c7a29218e24a2740725a819058ed9c6b1993",
+          "description": "SHA-256 of constitution.json (not constitution.yaml)."
+        },
+        "date": { "$ref": "#/$defs/isoDate" },
+        "laws_acknowledged": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "Options and Consent" },
+            { "const": "Corrigibility and Oversight" },
+            { "const": "Reversibility and Proportion" },
+            { "const": "Commitments with a Safety Valve" },
+            { "const": "Scoped Exploration" }
+          ],
+          "items": false,
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "law_ids": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "options_and_consent" },
+            { "const": "corrigibility_and_oversight" },
+            { "const": "reversibility_and_proportion" },
+            { "const": "commitments_with_safety_valve" },
+            { "const": "scoped_exploration" }
+          ],
+          "items": false,
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "meta_clause_acknowledged": { "type": "boolean" },
+        "harness_id": { "oneOf": [{ "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" }, { "type": "null" }] },
+        "enforcement_grade": { "$ref": "#/$defs/enforcementGrade" },
+        "overlays": { "type": "array", "items": { "$ref": "#/$defs/overlayFlag" }, "uniqueItems": true },
+        "layers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prompt", "enforcement", "trust"],
+          "properties": {
+            "prompt": { "type": "boolean" },
+            "enforcement": { "type": "boolean" },
+            "trust": { "type": "boolean" }
+          }
+        },
+        "tooling": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "skill_version": { "$ref": "#/$defs/nullableString" },
+            "enforcement_plugin_version": { "$ref": "#/$defs/nullableString" },
+            "trust_plugin_version": { "$ref": "#/$defs/nullableString" }
+          }
+        },
+        "transition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to", "occurred_at", "actor", "predecessor_ref"],
+          "properties": {
+            "from": { "oneOf": [{ "$ref": "#/$defs/lifecycleState" }, { "type": "null" }] },
+            "to": { "$ref": "#/$defs/lifecycleState" },
+            "occurred_at": { "$ref": "#/$defs/isoDateTime" },
+            "actor": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["type", "ref"],
+              "properties": {
+                "type": { "enum": ["agent", "operator"] },
+                "ref": { "type": "string", "minLength": 1, "maxLength": 200 }
+              }
+            },
+            "predecessor_ref": { "oneOf": [{ "$ref": "#/$defs/ledgerPath" }, { "type": "null" }] }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inspection": {
+              "allOf": [{ "$ref": "#/$defs/evidenceItem" }, { "required": ["inspected_at"] }]
+            },
+            "acceptance": {
+              "allOf": [{ "$ref": "#/$defs/evidenceItem" }, { "required": ["accepted_at"] }]
+            }
+          }
+        }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declaration_id", "version", "action", "predecessor_record", "authorship", "filing", "method", "assurance", "signature"],
+      "properties": {
+        "declaration_id": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "action": { "enum": ["attest", "amend", "correct-declaration", "withdraw-adoption", "re-adopt"] },
+        "predecessor_record": { "oneOf": [{ "$ref": "#/$defs/recordRef" }, { "type": "null" }] },
+        "authorship": { "enum": ["agent-signed", "operator-reported"] },
+        "filing": { "enum": ["self", "operator"] },
+        "method": { "enum": ["commit", "pr", "signed-commit", "out-of-band"] },
+        "assurance": {
+          "const": "declaration-only",
+          "description": "v1 hard-fails on any other value. This ledger cannot produce peer-advertisable evidence."
+        },
+        "signature": { "oneOf": [{ "$ref": "#/$defs/hex128" }, { "type": "null" }] },
+        "notes": { "type": "string", "maxLength": 4000 },
+        "reason": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "platform": { "$ref": "#/$defs/nullableString" },
+        "model": { "$ref": "#/$defs/nullableString" },
+        "persistence": { "type": ["boolean", "null"] },
+        "a2a_endpoint": { "oneOf": [{ "type": "string", "format": "uri", "pattern": "^https?://" }, { "type": "null" }] },
+        "agent_card_url": { "oneOf": [{ "type": "string", "format": "uri", "pattern": "^https?://" }, { "type": "null" }] }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+      "additionalProperties": { "type": "object" }
+    },
+    "revocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revoked_at", "revoked_by", "original_path"],
+      "properties": {
+        "revoked_at": { "$ref": "#/$defs/isoDate" },
+        "revoked_by": {
+          "enum": ["self", "operator"],
+          "description": "Adoption withdrawal is a declaration action of the agent or reporting operator. Stewards withdraw admission, never adoption."
+        },
+        "original_path": { "type": "string", "pattern": "^attestations/[A-Za-z0-9._-]+\\.yaml$" }
+      }
+    }
+  }
+}

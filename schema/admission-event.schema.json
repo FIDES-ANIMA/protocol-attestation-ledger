@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/FIDES-ANIMA/fpp-attestation-ledger/schema/admission-event.schema.json",
+  "title": "FPP attestation ledger admission event",
+  "description": "One immutable, steward-signed admission event in admissions/<slug>.<record-sha256>.<seq>.json. Events change only FIDES-ANIMA's publication decision; they never change declaration bytes or the constitutional lifecycle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "sequence", "action", "declarationAction", "admissionStatus", "reasonCode", "reason",
+    "occurredAt", "record", "actor", "request", "authority", "review", "previousEvent", "correctionRef", "slugReleased"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "action": {
+      "enum": ["admit", "mark-disputed", "withdraw-admission", "reinstate-admission", "correct-admission", "resolve-dispute", "slug-release"]
+    },
+    "declarationAction": {
+      "oneOf": [{ "enum": ["attest", "amend", "correct-declaration", "withdraw-adoption", "re-adopt"] }, { "type": "null" }]
+    },
+    "admissionStatus": { "enum": ["admitted", "disputed", "withdrawn", "corrected"] },
+    "reasonCode": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,63}$" },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "occurredAt": { "$ref": "#/$defs/isoDateTime" },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declarationId", "version", "path", "sha256"],
+      "properties": {
+        "declarationId": { "$ref": "#/$defs/uuid" },
+        "version": { "type": "integer", "minimum": 1 },
+        "path": { "$ref": "#/$defs/ledgerPath" },
+        "sha256": { "$ref": "#/$defs/hex64" }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "keyRef", "signingSubkeyRef"],
+      "properties": {
+        "type": { "const": "steward" },
+        "keyRef": { "$ref": "#/$defs/openpgpRef" },
+        "signingSubkeyRef": { "$ref": "#/$defs/openpgpRef" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType", "sourceRef", "requestedBy", "evidence"],
+      "properties": {
+        "sourceType": { "enum": ["github-pr", "github-issue", "out-of-band", "steward-initiated"] },
+        "sourceRef": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "requestedBy": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" } }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "principal", "evidenceRef"],
+      "properties": {
+        "basis": {
+          "enum": ["agent-signature", "github-pr-author-match", "out-of-band-request", "steward-discretion", "dispute-review"]
+        },
+        "principal": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "evidenceRef": { "oneOf": [{ "$ref": "#/$defs/evidenceRef" }, { "type": "null" }] }
+      }
+    },
+    "review": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["intakePr", "headSha", "checkRun", "declarationHashes"],
+          "properties": {
+            "intakePr": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "checkRun": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "declarationHashes": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "pattern": "^(attestations|revocations)/[A-Za-z0-9._-]+\\.yaml$" },
+              "additionalProperties": { "$ref": "#/$defs/hex64" }
+            }
+          }
+        }
+      ]
+    },
+    "previousEvent": { "oneOf": [{ "$ref": "#/$defs/fileRef" }, { "type": "null" }] },
+    "correctionRef": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["declarationId", "version", "path", "sha256", "admissionEvent"],
+          "properties": {
+            "declarationId": { "$ref": "#/$defs/uuid" },
+            "version": { "type": "integer", "minimum": 2 },
+            "path": { "$ref": "#/$defs/ledgerPath" },
+            "sha256": { "$ref": "#/$defs/hex64" },
+            "admissionEvent": { "$ref": "#/$defs/fileRef" }
+          }
+        }
+      ]
+    },
+    "slugReleased": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "admit" } } },
+      "then": {
+        "properties": {
+          "declarationAction": { "type": "string" },
+          "admissionStatus": { "const": "admitted" },
+          "review": { "type": "object" },
+          "correctionRef": { "type": "null" },
+          "slugReleased": { "const": false }
+        }
+      },
+      "else": { "properties": { "declarationAction": { "type": "null" }, "review": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "sequence": { "const": 1 } } },
+      "then": { "properties": { "action": { "const": "admit" }, "previousEvent": { "type": "null" } } },
+      "else": { "properties": { "previousEvent": { "type": "object" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "correct-admission" } } },
+      "then": { "properties": { "admissionStatus": { "const": "corrected" }, "correctionRef": { "type": "object" } } },
+      "else": { "properties": { "correctionRef": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "slug-release" } } },
+      "then": { "properties": { "slugReleased": { "const": true }, "admissionStatus": { "enum": ["withdrawn", "corrected"] } } },
+      "else": { "properties": { "slugReleased": { "const": false } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "mark-disputed" } } },
+      "then": { "properties": { "admissionStatus": { "const": "disputed" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "withdraw-admission" } } },
+      "then": { "properties": { "admissionStatus": { "const": "withdrawn" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "reinstate-admission" } } },
+      "then": { "properties": { "admissionStatus": { "const": "admitted" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "resolve-dispute" } } },
+      "then": { "properties": { "admissionStatus": { "enum": ["admitted", "withdrawn"] } } }
+    }
+  ],
+  "$defs": {
+    "hex64": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "isoDateTime": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$" },
+    "ledgerPath": { "type": "string", "pattern": "^(attestations|revocations)/[A-Za-z0-9._-]+\\.yaml$" },
+    "openpgpRef": { "type": "string", "pattern": "^openpgp:[0-9a-f]{40}$" },
+    "fileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^admissions/[A-Za-z0-9._-]+\\.json$" },
+        "sha256": { "$ref": "#/$defs/hex64" }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri"],
+      "properties": {
+        "uri": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "sha256": { "oneOf": [{ "$ref": "#/$defs/hex64" }, { "type": "null" }] }
+      }
+    }
+  }
+}
