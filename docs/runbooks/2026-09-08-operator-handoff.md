@@ -37,34 +37,20 @@ git remote -v
 # queried: origin https://github.com/FIDES-ANIMA/protocol-attestation-ledger.git
 ```
 
-### Decision required before I0/I1
+### Decisions recorded 2026-09-08 (operator)
 
-The plan's I0 exit is `FIDES-ANIMA/fpp-attestation-ledger` → `PUBLIC`. The local `origin` points at `FIDES-ANIMA/protocol-attestation-ledger`, which exists, is **empty**, and is **PRIVATE**. Nothing has been pushed. Choose one:
-
-1. **Keep the plan name.** Create `FIDES-ANIMA/fpp-attestation-ledger` (empty, public) and repoint `origin`. No code changes.
-2. **Keep `protocol-attestation-ledger`.** Then the name must change in the contract before the first push: `schema/*.json` `$id`, `README.md` clone URL, `SCHEMA.md`, `pyproject.toml`, `.github/workflows/validate.yml` header, the `REPOSITORY` fixture constant in `tests/conftest.py`, and the requirements/plan documents' references. Say so and it will be done as one commit.
-
-Either way the repository must be PUBLIC before I1; AC1 (public, verifiable history) is not met by a private ledger.
+1. **Repository name:** keep `FIDES-ANIMA/protocol-attestation-ledger`. Re-queried after the decision: `gh repo view FIDES-ANIMA/protocol-attestation-ledger --json visibility,isEmpty` → `PUBLIC`, `isEmpty: true`. The contract files were renamed in one commit (`schema/*.json` `$id`, `README.md`, `SCHEMA.md`, `pyproject.toml`, helper help text, test fixtures). The plan and requirements documents keep their historical name; the staged plan's I0 exit criterion is read as applying to this repository.
+2. **Steward actor allowlist:** `ovrsr` is the only authorized GitHub actor. `stewards/authorized-github-actors.txt` is committed with that single login; it matches the membership query in §2.
+3. **I3:** Axiom's `fpp_id` `fpp:ed25519:cbe3226bbaaa9a883b7750368bfd8f59987b00dd3931511e7a37b3383b3181b0` (plan §7) is confirmed by the operator. No statement was made that Axiom signs the seed bytes, so D7 files Axiom as `authorship: operator-reported`, `filing: operator`; the `fpp_id` is claimed, not authenticated, until an agent-signed `correct-declaration` arrives.
 
 ## 3. I0 — repository
 
-Option 1 (plan name):
+Resolved by decision 1 above. Exit criterion re-queried:
 
 ```bash
-gh repo create FIDES-ANIMA/fpp-attestation-ledger --public \
-  --description "Authoritative record of FIDES-ANIMA-admitted FPP declarations"
-git remote set-url origin https://github.com/FIDES-ANIMA/fpp-attestation-ledger.git
-gh repo view FIDES-ANIMA/fpp-attestation-ledger --json visibility   # exit criterion: PUBLIC
+gh repo view FIDES-ANIMA/protocol-attestation-ledger --json visibility   # PUBLIC (2026-09-08)
+git remote get-url origin                                                 # https://github.com/FIDES-ANIMA/protocol-attestation-ledger.git
 ```
-
-Option 2 (existing repo): flag names verified against `gh version 2.100.0 (2026-09-03)` with `gh repo edit --help`:
-
-```bash
-gh repo edit FIDES-ANIMA/protocol-attestation-ledger --visibility public --accept-visibility-change-consequences
-gh repo view FIDES-ANIMA/protocol-attestation-ledger --json visibility   # exit criterion: PUBLIC
-```
-
-Do not initialize the remote with a README; the local history must be the only root.
 
 ## 4. I1 — first push (unsigned, no seeds)
 
@@ -80,9 +66,9 @@ git log --all --oneline -- .resources
 Then:
 
 ```bash
-git push -u origin main
-gh run list --repo <owner/name> --branch main --limit 1     # placeholder: owner/name from §2 decision
-gh run view <run-id> --repo <owner/name>                    # placeholder: run-id from the line above; must be success
+git push -u origin main   # performed 2026-09-08; see §4.1 for the recorded result
+gh run list --repo FIDES-ANIMA/protocol-attestation-ledger --branch main --limit 1     # repository fixed by decision 1
+gh run view <run-id> --repo FIDES-ANIMA/protocol-attestation-ledger                    # placeholder: run-id from the line above; must be success
 ```
 
 The first run is in `main` mode over an empty ledger; both validators exit 0 on zero records (tested: `test_main_mode_empty_tree_passes`).
@@ -102,10 +88,10 @@ Write one lowercase login per line, commit, push through the normal path. Never 
 ### 5.2 Query before writing any protection
 
 ```bash
-gh api repos/<owner/name>/rulesets
-gh api repos/<owner/name>/branches/main/protection
-gh api repos/<owner/name>/commits/<sha>/check-runs --jq '.check_runs[].name'   # must list ledger-validation
-gh api repos/<owner/name> --jq '{allow_merge_commit,allow_squash_merge,allow_rebase_merge,web_commit_signoff_required}'
+gh api repos/FIDES-ANIMA/protocol-attestation-ledger/rulesets
+gh api repos/FIDES-ANIMA/protocol-attestation-ledger/branches/main/protection
+gh api repos/FIDES-ANIMA/protocol-attestation-ledger/commits/<sha>/check-runs --jq '.check_runs[].name'   # must list ledger-validation
+gh api repos/FIDES-ANIMA/protocol-attestation-ledger --jq '{allow_merge_commit,allow_squash_merge,allow_rebase_merge,web_commit_signoff_required}'
 ```
 
 Save the sanitized outputs under `docs/runbooks/` as the proof record. Required check name is `ledger-validation` (job name in `.github/workflows/validate.yml`); confirm it from the check-runs query, not from this file.
@@ -128,7 +114,7 @@ Confirm Axiom's `fpp_id` out of band and record (a) the confirmed identifier and
 Online machine (no secret key):
 
 ```bash
-python scripts/prepare-admission.py query-intake --repo <owner/name> --pr <n> --expected-head <sha> --out /tmp/review.json
+python scripts/prepare-admission.py query-intake --repo FIDES-ANIMA/protocol-attestation-ledger --pr <n> --expected-head <sha> --out /tmp/review.json
 git fetch origin main "refs/pull/<n>/head"
 python scripts/prepare-admission.py build --action attest --action-id <id> \
   --main-ref "$(git rev-parse origin/main)" --intake-ref <sha> --review-json /tmp/review.json \
@@ -148,7 +134,7 @@ git push origin admission/<id>
 Then open the PR, wait for `ledger-validation` to be green on that exact SHA, and:
 
 ```bash
-python scripts/promote-admission.py --repo <owner/name> --pr <n> --expected-head <sha> --log /tmp/promote.json
+python scripts/promote-admission.py --repo FIDES-ANIMA/protocol-attestation-ledger --pr <n> --expected-head <sha> --log /tmp/promote.json
 ```
 
 `--dry-run` verifies without pushing. All `<placeholders>` come from `gh pr view` / `git rev-parse`, never from memory.

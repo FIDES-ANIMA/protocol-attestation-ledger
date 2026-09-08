@@ -1,0 +1,4 @@
+# Verified steward GitHub logins, one per line, lowercase.
+# Source: gh api orgs/FIDES-ANIMA/members --jq '.[].login' (2026-09-08) and operator confirmation.
+# Only these actors may drive admission/* branches; validators fail closed if this file is missing.
+ovrsr

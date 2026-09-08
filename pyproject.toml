@@ -1,5 +1,5 @@
 [project]
-name = "fpp-attestation-ledger"
+name = "protocol-attestation-ledger"
 version = "1.0.0"
 description = "Validators for the FIDES-ANIMA FPP attestation ledger"
 requires-python = ">=3.11"

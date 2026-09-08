@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/FIDES-ANIMA/fpp-attestation-ledger/schema/attestation.schema.json",
+  "$id": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/schema/attestation.schema.json",
   "title": "FPP attestation ledger declaration",
   "description": "One declaration-only FPP adoption filing. Vocabulary is frozen from Freedom Preserving Protocol v1.0.0 (constitution.json SHA-256 71bf60ad...1993). A valid record proves only that these bytes were filed; admission is recorded separately under admissions/.",
   "type": "object",

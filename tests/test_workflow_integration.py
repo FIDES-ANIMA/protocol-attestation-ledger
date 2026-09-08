@@ -78,7 +78,7 @@ class Flow:
         *,
         author: str = "alice",
         actor: str | None = None,
-        head_repo: str = "alice/fpp-attestation-ledger",
+        head_repo: str = "alice/protocol-attestation-ledger",
         head_ref: str = "nova",
         conclusion: str = "success",
         extra_files: dict[str, bytes] | None = None,
@@ -418,7 +418,7 @@ def test_matrix_full_lineage_journey(flow: Flow) -> None:
     # a new lineage may now take the slug
     bob = AgentKey()
     new = declaration(key=bob, contact="github:bob", operator_name="Bob")
-    head, review = flow.intake({NOVA: dump_yaml(new)}, author="bob", head_repo="bob/fpp-attestation-ledger")
+    head, review = flow.intake({NOVA: dump_yaml(new)}, author="bob", head_repo="bob/protocol-attestation-ledger")
     flow.admit(
         "attest",
         "nova-bob",
@@ -487,7 +487,7 @@ def test_prepare_rejects_contributor_steward_artifacts(flow: Flow) -> None:
 
 def test_prepare_rejects_mismatched_operator_authority(flow: Flow) -> None:
     head, review = flow.intake(
-        {NOVA: dump_yaml(declaration())}, author="mallory", head_repo="mallory/fpp-attestation-ledger"
+        {NOVA: dump_yaml(declaration())}, author="mallory", head_repo="mallory/protocol-attestation-ledger"
     )
     result, _ = flow.prepare("attest", "nova", intake=head, review=review)
     assert result.returncode != 0
@@ -566,7 +566,7 @@ def test_promote_rejects_non_steward_branch_actor_and_fork(flow: Flow) -> None:
     assert_fails(flow.promote(admission_head, "admission/nova", author="mallory"), "mallory")
     assert_fails(flow.promote(admission_head, "admission/nova", actor="mallory"), "mallory")
     assert_fails(
-        flow.promote(admission_head, "admission/nova", head_repo="steward-bot/fpp-attestation-ledger"),
+        flow.promote(admission_head, "admission/nova", head_repo="steward-bot/protocol-attestation-ledger"),
         "base repository",
     )
     flow.ledger.git("push", "-q", "origin", "admission/nova:refs/heads/feature/nova")
@@ -712,7 +712,7 @@ def run_ctx(ledger: Ledger, tmp_path: Path, env: dict[str, str]) -> tuple[subpro
 
 
 def test_ci_context_intake_from_fork(ledger: Ledger, tmp_path: Path) -> None:
-    env = _gh_env(tmp_path, _pr_event(head_repo="alice/fpp-attestation-ledger", head_ref="nova"))
+    env = _gh_env(tmp_path, _pr_event(head_repo="alice/protocol-attestation-ledger", head_ref="nova"))
     result, out = run_ctx(ledger, tmp_path, env)
     assert_passes(result)
     assert "mode=intake" in output(result)

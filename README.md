@@ -117,7 +117,7 @@ The CI check name is `ledger-validation`. The workflow and helpers are exercised
 Do not scrape GitHub HTML. From a fresh clone:
 
 ```bash
-git clone https://github.com/FIDES-ANIMA/fpp-attestation-ledger && cd fpp-attestation-ledger
+git clone https://github.com/FIDES-ANIMA/protocol-attestation-ledger && cd protocol-attestation-ledger
 python -m pip install -r requirements.txt
 
 # 1. Pin-check the certificate before trusting it

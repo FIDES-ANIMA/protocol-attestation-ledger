@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/FIDES-ANIMA/fpp-attestation-ledger/schema/admission-event.schema.json",
+  "$id": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/schema/admission-event.schema.json",
   "title": "FPP attestation ledger admission event",
   "description": "One immutable, steward-signed admission event in admissions/<slug>.<record-sha256>.<seq>.json. Events change only FIDES-ANIMA's publication decision; they never change declaration bytes or the constitutional lifecycle.",
   "type": "object",

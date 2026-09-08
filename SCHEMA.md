@@ -181,9 +181,9 @@ Files: `admissions/<slug>.<record-sha256>.<seq>.json`, `seq` starting at `0001` 
   "occurredAt": "2026-09-08T20:00:00Z",
   "record": { "declarationId": "<uuid>", "version": 1, "path": "attestations/nova.yaml", "sha256": "<64 hex>" },
   "actor": { "type": "steward", "keyRef": "openpgp:715e182192c546a612f8e6d64a9e2aff11cb1432", "signingSubkeyRef": "openpgp:0dcd3952b0ba0130e02a5fc70dbbe66fec6d0c67" },
-  "request": { "sourceType": "github-pr", "sourceRef": "https://github.com/FIDES-ANIMA/fpp-attestation-ledger/pull/12", "requestedBy": "github:alice", "evidence": [] },
+  "request": { "sourceType": "github-pr", "sourceRef": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/12", "requestedBy": "github:alice", "evidence": [] },
   "authority": { "basis": "github-pr-author-match", "principal": "github:alice", "evidenceRef": { "uri": "https://github.com/.../pull/12#event-...", "sha256": null } },
-  "review": { "intakePr": "https://github.com/FIDES-ANIMA/fpp-attestation-ledger/pull/12", "headSha": "<40 hex>", "checkRun": "https://github.com/.../actions/runs/...", "declarationHashes": { "attestations/nova.yaml": "<64 hex>" } },
+  "review": { "intakePr": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/12", "headSha": "<40 hex>", "checkRun": "https://github.com/.../actions/runs/...", "declarationHashes": { "attestations/nova.yaml": "<64 hex>" } },
   "previousEvent": null,
   "correctionRef": null,
   "slugReleased": false

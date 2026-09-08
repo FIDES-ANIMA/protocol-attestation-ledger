@@ -574,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="command", required=True)
 
     q = sub.add_parser("query-intake", help="query GitHub for a reviewed intake PR and write the review record")
-    q.add_argument("--repo", required=True, help="owner/name, e.g. FIDES-ANIMA/fpp-attestation-ledger")
+    q.add_argument("--repo", required=True, help="owner/name, e.g. FIDES-ANIMA/protocol-attestation-ledger")
     q.add_argument("--pr", required=True, type=int)
     q.add_argument("--expected-head", help="reject if the PR head moved away from this SHA")
     q.add_argument("--check-name", default=DEFAULT_CHECK_NAME)

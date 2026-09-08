@@ -1,6 +1,6 @@
 """Declaration-side contract for scripts/validate.py.
 
-Case numbers refer to docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md §D2.
+Case numbers refer to docs/plans/2026-08-30-protocol-attestation-ledger-v1-staged.md §D2.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ NOVA = "attestations/nova.yaml"
 def intake(ledger: Ledger, base: str, **ctx: object) -> tuple[str, object]:
     head = ledger.commit("intake change")
     ctx.setdefault("head_ref", "intake/alice/nova")
-    ctx.setdefault("head_repo", "FIDES-ANIMA/fpp-attestation-ledger")
+    ctx.setdefault("head_repo", "FIDES-ANIMA/protocol-attestation-ledger")
     path = ledger.context(head_sha=head, base_sha=base, **ctx)  # type: ignore[arg-type]
     return head, ledger.validate("intake", base_ref=base, context=path)
 
@@ -476,7 +476,7 @@ def test_valid_amend_passes_in_intake_mode(git_ledger: Ledger) -> None:
     v1_bytes = git_ledger.write_yaml(NOVA, v1)
     base = git_ledger.commit("v1")
     git_ledger.write_yaml(NOVA, successor(v1, NOVA, v1_bytes, key=key, **{"attestation.notes": "tooling bump"}))
-    _, result = intake(git_ledger, base, actor="anyone", head_repo="anyone/fpp-attestation-ledger")
+    _, result = intake(git_ledger, base, actor="anyone", head_repo="anyone/protocol-attestation-ledger")
     assert_passes(result)
 
 
@@ -554,7 +554,7 @@ def test_correct_declaration_may_upgrade_provenance_in_intake_mode(git_ledger: L
     )
     v2["attestation"]["signature"] = key.sign(v2)
     git_ledger.write_yaml(NOVA, v2)
-    _, result = intake(git_ledger, base, actor="courier", head_repo="courier/fpp-attestation-ledger", head_ref="x")
+    _, result = intake(git_ledger, base, actor="courier", head_repo="courier/protocol-attestation-ledger", head_ref="x")
     assert_passes(result)
 
 
@@ -648,7 +648,7 @@ def test_case23_operator_authority_actor_mismatch_fails(git_ledger: Ledger) -> N
 def test_case23b_operator_authority_fork_owner_mismatch_fails(git_ledger: Ledger) -> None:
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration(contact="github:alice"))
-    _, result = intake(git_ledger, base, actor="alice", head_repo="mallory/fpp-attestation-ledger")
+    _, result = intake(git_ledger, base, actor="alice", head_repo="mallory/protocol-attestation-ledger")
     assert_fails(result, "authority")
 
 
@@ -662,7 +662,7 @@ def test_case23c_operator_authority_base_branch_prefix_mismatch_fails(git_ledger
 def test_case23d_operator_authority_match_passes_for_fork_and_scoped_branch(git_ledger: Ledger) -> None:
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration(contact="github:alice"))
-    _, result = intake(git_ledger, base, actor="Alice", head_repo="Alice/fpp-attestation-ledger", head_ref="x")
+    _, result = intake(git_ledger, base, actor="Alice", head_repo="Alice/protocol-attestation-ledger", head_ref="x")
     assert_passes(result)
     git_ledger.write_yaml("attestations/nova--two.yaml", declaration(slug="nova--two", contact="github:alice"))
     _, result = intake(git_ledger, base, actor="alice")
@@ -695,7 +695,7 @@ def test_case23g_workflow_rerun_events_do_not_supply_authority(git_ledger: Ledge
 def test_agent_signed_filing_is_authorized_by_signature_regardless_of_transport(git_ledger: Ledger) -> None:
     base = git_ledger.commit("empty")
     git_ledger.write_yaml(NOVA, declaration(key=AgentKey(), contact="mailto:ops@example.org"))
-    _, result = intake(git_ledger, base, actor="courier", head_repo="courier/fpp-attestation-ledger", head_ref="x")
+    _, result = intake(git_ledger, base, actor="courier", head_repo="courier/protocol-attestation-ledger", head_ref="x")
     assert_passes(result)
 
 
@@ -713,7 +713,10 @@ def test_intake_head_sha_must_match_context(git_ledger: Ledger) -> None:
     git_ledger.write_yaml(NOVA, declaration())
     git_ledger.commit("pr")
     ctx = git_ledger.context(
-        head_sha="1" * 40, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+        head_sha="1" * 40,
+        base_sha=base,
+        head_ref="intake/alice/nova",
+        head_repo="FIDES-ANIMA/protocol-attestation-ledger",
     )
     assert_fails(git_ledger.validate("intake", base_ref=base, context=ctx), "head")
 

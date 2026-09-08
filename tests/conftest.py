@@ -53,7 +53,7 @@ LAW_IDS = [
     "commitments_with_safety_valve",
     "scoped_exploration",
 ]
-REPOSITORY = "FIDES-ANIMA/fpp-attestation-ledger"
+REPOSITORY = "FIDES-ANIMA/protocol-attestation-ledger"
 STEWARD_LOGIN = "steward-bot"
 FAKE_PAST = "20240101T000000!"
 # Built from fragments so the repository's own secret-armor scan never matches this file.
@@ -628,7 +628,7 @@ class Ledger:
         event_action: str = "synchronize",
         actor: str = "alice",
         author: str | None = None,
-        head_repo: str = "alice/fpp-attestation-ledger",
+        head_repo: str = "alice/protocol-attestation-ledger",
         head_ref: str = "nova",
         head_sha: str | None = None,
         base_sha: str | None = None,

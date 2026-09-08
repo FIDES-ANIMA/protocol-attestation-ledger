@@ -1,6 +1,6 @@
 """Admission-side contract for scripts/verify-signatures.py (and admission-mode validate.py).
 
-Case numbers refer to docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md §D2.
+Case numbers refer to docs/plans/2026-08-30-protocol-attestation-ledger-v1-staged.md §D2.
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def test_case13_intake_mode_rejects_added_steward_signature(git_ledger: Ledger) 
     git_ledger.steward.sign_detached(git_ledger.path(NOVA), git_ledger.path(git_ledger.record_sig_name(NOVA)))
     head = git_ledger.commit("pr with asc")
     ctx = git_ledger.context(
-        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/protocol-attestation-ledger"
     )
     assert_fails(git_ledger.verify("intake", base_ref=base, context=ctx), ".record.asc")
 
@@ -156,7 +156,7 @@ def test_case13b_intake_mode_rejects_added_admission_event(git_ledger: Ledger) -
     git_ledger.write("admissions/nova.abc.0001.json", "{}\n")
     head = git_ledger.commit("pr with event")
     ctx = git_ledger.context(
-        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/protocol-attestation-ledger"
     )
     assert_fails(git_ledger.verify("intake", base_ref=base, context=ctx), "admissions/")
 
@@ -166,7 +166,7 @@ def test_intake_mode_clean_declaration_change_passes(git_ledger: Ledger) -> None
     git_ledger.write_yaml(NOVA, declaration())
     head = git_ledger.commit("pr")
     ctx = git_ledger.context(
-        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+        head_sha=head, base_sha=base, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/protocol-attestation-ledger"
     )
     assert_passes(git_ledger.verify("intake", base_ref=base, context=ctx))
 
@@ -176,7 +176,10 @@ def test_intake_mode_requires_base_ref_matching_context(git_ledger: Ledger) -> N
     git_ledger.write_yaml(NOVA, declaration())
     head = git_ledger.commit("pr")
     ctx = git_ledger.context(
-        head_sha=head, base_sha="2" * 40, head_ref="intake/alice/nova", head_repo="FIDES-ANIMA/fpp-attestation-ledger"
+        head_sha=head,
+        base_sha="2" * 40,
+        head_ref="intake/alice/nova",
+        head_repo="FIDES-ANIMA/protocol-attestation-ledger",
     )
     assert_fails(git_ledger.verify("intake", base_ref=base, context=ctx), "base")
     assert_fails(git_ledger.verify("intake", context=ctx), "--base-ref")
@@ -545,7 +548,7 @@ def test_case29e_admission_mode_requires_admission_branch_in_base_repo(git_ledge
     assert_fails(verify, "admission/")
     assert_fails(validate, "admission/")
     git_ledger.commit("again")
-    _, verify, validate = admission(git_ledger, base, head_repo="steward-bot/fpp-attestation-ledger")
+    _, verify, validate = admission(git_ledger, base, head_repo="steward-bot/protocol-attestation-ledger")
     assert_fails(verify, "base repository")
 
 
