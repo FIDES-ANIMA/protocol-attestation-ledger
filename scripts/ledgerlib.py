@@ -293,6 +293,19 @@ class Git:
     def head(self) -> str:
         return self._run("rev-parse", "HEAD")
 
+    def is_shallow(self) -> bool:
+        """True unless Git positively reports a complete (non-shallow) history.
+
+        A shallow clone presents its boundary commits as parentless, so a first-parent walk over it looks
+        like a complete append-only history that simply started later. Anything other than an explicit
+        "false" (old git, unexpected output) is treated as shallow so release modes fail closed.
+        """
+        try:
+            answer = self._run("rev-parse", "--is-shallow-repository")
+        except subprocess.CalledProcessError:
+            return True
+        return answer != "false"
+
     def rev_parse(self, ref: str) -> str | None:
         try:
             return self._run("rev-parse", "--verify", f"{ref}^{{commit}}")
@@ -853,6 +866,11 @@ def require_release_inputs(mode: str, git: Git, base_ref: str | None, context: C
         return None
     if not git.available or not git.has_commits():
         raise FailClosed(f"{mode} mode requires a Git repository with full history; none is available")
+    if git.is_shallow():
+        raise FailClosed(
+            f"{mode} mode requires complete Git history but this repository is shallow; a truncated history "
+            "cannot prove append-only behaviour (use fetch-depth: 0 or `git fetch --unshallow`)"
+        )
     if not git.is_clean():
         raise FailClosed(f"{mode} mode requires the working tree to equal HEAD (uncommitted changes present)")
     if mode == "main":

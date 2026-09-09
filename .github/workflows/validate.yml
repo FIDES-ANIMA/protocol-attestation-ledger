@@ -66,6 +66,13 @@ jobs:
         id: ctx
         run: python scripts/ci-context.py --out "$RUNNER_TEMP/ledger-context.json"
 
+      - name: Lint and type-check validators and tests (configured in pyproject.toml)
+        run: |
+          set -euo pipefail
+          python -m ruff check scripts tests
+          python -m ruff format --check scripts tests
+          python -m mypy
+
       - name: Run validator test suite
         run: python -m pytest -q
 

@@ -721,6 +721,10 @@ def check_admission_diff(tree: Tree, base: str, report: Report) -> None:
 
 def check_main_history(tree: Tree, report: Report) -> None:
     git = tree.git
+    if git.is_shallow():
+        # A shallow boundary commit looks like a parentless root, so the walk below would silently skip
+        # every rewrite that happened before the cut. Only a complete first-parent history is evidence.
+        raise L.FailClosed("main mode append-only history check requires a non-shallow repository")
     head = git.head()
     for commit in git.first_parent_chain(head):
         parent = git.parent(commit)

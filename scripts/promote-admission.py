@@ -28,10 +28,38 @@ import ledgerlib as L  # noqa: E402
 
 SCRIPTS = Path(__file__).resolve().parent
 DEFAULT_CHECK_NAME = "ledger-validation"
+# The ledger workflow is identified by its committed path, which GitHub reports on every workflow run as
+# `path`. Names are free text (any workflow may call itself ledger-validation); numeric workflow ids are
+# stable per repository but differ between the ledger and its forks, so the path is the portable identity.
+DEFAULT_WORKFLOW_PATH = ".github/workflows/validate.yml"
 
 
 class Rejected(Exception):
     pass
+
+
+def describe_run(run: dict[str, Any]) -> str:
+    return (
+        f"run {run.get('id')} (workflow {run.get('path')!r}, branch {run.get('head_branch')!r}, "
+        f"event {run.get('event')!r}, attempt {run.get('run_attempt')!r}, sha {str(run.get('head_sha') or '')[:12]})"
+    )
+
+
+def is_expected_main_run(run: dict[str, Any], head: str, workflow_path: str) -> bool:
+    """True only for the ledger workflow's push-triggered run on main for exactly this SHA."""
+    return (
+        run.get("path") == workflow_path
+        and run.get("head_branch") == "main"
+        and run.get("event") == "push"
+        and run.get("head_sha") == head
+    )
+
+
+def run_attempt_of(run: dict[str, Any]) -> int | None:
+    attempt = run.get("run_attempt")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
+        return None
+    return attempt
 
 
 def now_iso() -> str:
@@ -303,26 +331,61 @@ class Promoter:
             self.step("main workflow observation skipped (--pr-json without --observe-main)")
             return
         # The admission PR run and the post-promotion main run share the same head SHA, so check-runs on the
-        # commit cannot tell them apart. Only a workflow run triggered by the `push` event on `main` for this
-        # exact SHA counts as the main-mode result (first live promotion, 2026-09-08, recorded the PR run here).
+        # commit cannot tell them apart (first live promotion, 2026-09-08, recorded the PR run here). Nor is
+        # "some push workflow went green" evidence: any other workflow that runs on push to main would satisfy
+        # that. Only the ledger workflow itself, identified by its committed path, triggered by `push` on
+        # `main` for this exact SHA counts as the main-mode result, and its latest attempt is what GitHub
+        # reports, so a re-run that failed after an earlier success is seen as the failure it is.
+        workflow_path = str(self.args.workflow_path)
         deadline = time.time() + self.args.observe_timeout
+        seen_other: set[str] = set()
         while time.time() < deadline:
             runs = gh_json(
                 "api",
-                f"repos/{self.args.repo}/actions/runs?branch=main&event=push&head_sha={head}&per_page=20",
+                f"repos/{self.args.repo}/actions/runs?branch=main&event=push&head_sha={head}&per_page=50",
             ).get("workflow_runs", [])
-            ours = [r for r in runs if r.get("head_sha") == head and r.get("event") == "push"]
-            done = [r for r in ours if r.get("status") == "completed"]
-            if done and any(r.get("conclusion") == "success" for r in done):
-                run = next(r for r in done if r.get("conclusion") == "success")
-                self.log["main_run"] = run.get("html_url")
-                self.log["main_run_id"] = run.get("id")
-                self.step(f"main workflow (push event) is green on the promoted SHA: run {run.get('id')}")
-                return
-            if done and all(r.get("conclusion") not in (None, "success") for r in done):
-                raise Rejected(f"main workflow concluded {done[-1].get('conclusion')!r} on {head[:12]}")
+            ours = [r for r in runs if is_expected_main_run(r, head, workflow_path)]
+            for other in runs:
+                if other not in ours and str(other.get("id")) not in seen_other:
+                    seen_other.add(str(other.get("id")))
+                    self.log.setdefault("ignored_runs", []).append(describe_run(other))
+            if len(ours) > 1:
+                raise Rejected(
+                    f"{len(ours)} push runs of {workflow_path} exist on main for {head[:12]}; the observation is "
+                    "ambiguous and main may have moved back and forth, inspect by hand: "
+                    + "; ".join(describe_run(r) for r in ours)
+                )
+            if ours:
+                run = ours[0]
+                attempt = run_attempt_of(run)
+                if attempt is None:
+                    raise Rejected(f"main workflow {describe_run(run)} reports no valid run_attempt")
+                if run.get("status") == "completed":
+                    if run.get("conclusion") != "success":
+                        raise Rejected(
+                            f"main workflow {describe_run(run)} concluded {run.get('conclusion')!r} on {head[:12]}"
+                        )
+                    self.log["main_run"] = run.get("html_url")
+                    self.log["main_run_id"] = run.get("id")
+                    self.log["main_run_attempt"] = attempt
+                    self.log["main_workflow_path"] = workflow_path
+                    self.log["main_workflow_id"] = run.get("workflow_id")
+                    if attempt > 1:
+                        self.log.setdefault("warnings", []).append(
+                            f"main run {run.get('id')} is green only on attempt {attempt}; the tree at {head[:12]} "
+                            "is immutable, so an earlier attempt failed for environmental reasons. Confirm that "
+                            "before treating the promotion as clean."
+                        )
+                    self.step(
+                        f"main workflow {workflow_path} (push event on main, attempt {attempt}) is green on the "
+                        f"promoted SHA: run {run.get('id')}"
+                    )
+                    return
             time.sleep(15)
-        raise Rejected("timed out waiting for the main (push) workflow run; do not consider the promotion complete")
+        raise Rejected(
+            f"timed out waiting for the {workflow_path} push run on main for {head[:12]}; "
+            "do not consider the promotion complete"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -334,6 +397,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--intake-review-json", help="re-queried intake review record to compare embedded event fields")
     ap.add_argument("--expected-head", required=True, help="the exact admission head SHA the steward verified offline")
     ap.add_argument("--check-name", default=DEFAULT_CHECK_NAME)
+    ap.add_argument(
+        "--workflow-path",
+        default=DEFAULT_WORKFLOW_PATH,
+        help="committed path of the ledger workflow whose push run on main is observed after promotion",
+    )
     ap.add_argument("--dry-run", action="store_true", help="verify everything but do not push")
     ap.add_argument(
         "--observe-main", action="store_true", help="poll the main workflow after pushing (default when live)"

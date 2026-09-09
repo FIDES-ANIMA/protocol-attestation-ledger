@@ -482,34 +482,48 @@ def _load_promote_module() -> Any:
     return mod
 
 
-def test_observe_main_waits_for_the_push_run_not_the_pr_run(git_ledger: Ledger, monkeypatch: Any) -> None:
-    """The PR run and the post-promotion main run share a head SHA; only the push-event run on main counts."""
-    mod = _load_promote_module()
-    head = "a" * 40
+WORKFLOW_PATH = ".github/workflows/validate.yml"
+
+
+def workflow_run(
+    run_id: int,
+    head: str,
+    *,
+    status: str = "completed",
+    conclusion: str | None = "success",
+    path: str = WORKFLOW_PATH,
+    branch: str = "main",
+    event: str = "push",
+    attempt: Any = 1,
+) -> dict[str, Any]:
+    """A workflow run as `gh api repos/.../actions/runs` returns it (fields the observer relies on)."""
+    return {
+        "id": run_id,
+        "workflow_id": 353526767,
+        "name": "ledger-validation",
+        "path": path,
+        "head_branch": branch,
+        "event": event,
+        "head_sha": head,
+        "run_attempt": attempt,
+        "status": status,
+        "conclusion": conclusion,
+        "html_url": f"https://github.com/x/y/actions/runs/{run_id}",
+    }
+
+
+def observer(mod: Any, git_ledger: Ledger, monkeypatch: Any, pages: list[dict[str, Any]]) -> tuple[Any, list[str]]:
+    """Promoter whose GitHub queries are answered from ``pages`` in order (the last page repeats)."""
     queries: list[str] = []
-    pages = [
-        {"workflow_runs": []},  # main run not created yet
-        {"workflow_runs": [{"id": 2, "head_sha": head, "event": "push", "status": "in_progress", "conclusion": None}]},
-        {
-            "workflow_runs": [
-                {
-                    "id": 2,
-                    "head_sha": head,
-                    "event": "push",
-                    "status": "completed",
-                    "conclusion": "success",
-                    "html_url": "https://github.com/x/y/actions/runs/2",
-                }
-            ]
-        },
-    ]
 
     def fake_gh_json(*args: str) -> Any:
         queries.append(args[-1])
-        return pages.pop(0)
+        return pages.pop(0) if len(pages) > 1 else pages[0]
 
     monkeypatch.setattr(mod, "gh_json", fake_gh_json)
-    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(mod.time, "time", lambda: clock["now"])
+    monkeypatch.setattr(mod.time, "sleep", lambda s: clock.__setitem__("now", clock["now"] + s))
     args = argparse.Namespace(
         root=str(git_ledger.root),
         repo=REPOSITORY,
@@ -518,36 +532,122 @@ def test_observe_main_waits_for_the_push_run_not_the_pr_run(git_ledger: Ledger, 
         observe_main=False,
         observe_timeout=60,
         check_name=CHECK,
+        workflow_path=WORKFLOW_PATH,
     )
-    p = mod.Promoter(args)
+    return mod.Promoter(args), queries
+
+
+def test_observe_main_waits_for_the_push_run_not_the_pr_run(git_ledger: Ledger, monkeypatch: Any) -> None:
+    """The PR run and the post-promotion main run share a head SHA; only the push-event run on main counts."""
+    mod = _load_promote_module()
+    head = "a" * 40
+    pages: list[dict[str, Any]] = [
+        {"workflow_runs": []},  # main run not created yet
+        {"workflow_runs": [workflow_run(2, head, status="in_progress", conclusion=None)]},
+        {"workflow_runs": [workflow_run(2, head)]},
+    ]
+    p, queries = observer(mod, git_ledger, monkeypatch, pages)
     p.observe_main(head)
     assert all("event=push" in q and "branch=main" in q and f"head_sha={head}" in q for q in queries)
     assert p.log["main_run_id"] == 2 and p.log["main_run"].endswith("/runs/2")
+    assert p.log["main_run_attempt"] == 1 and p.log["main_workflow_path"] == WORKFLOW_PATH
+    assert "warnings" not in p.log
 
 
 def test_observe_main_rejects_a_failed_push_run(git_ledger: Ledger, monkeypatch: Any) -> None:
     mod = _load_promote_module()
     head = "b" * 40
-    monkeypatch.setattr(
-        mod,
-        "gh_json",
-        lambda *a: {
-            "workflow_runs": [
-                {"id": 3, "head_sha": head, "event": "push", "status": "completed", "conclusion": "failure"}
-            ]
-        },
-    )
-    args = argparse.Namespace(
-        root=str(git_ledger.root),
-        repo=REPOSITORY,
-        dry_run=False,
-        pr_json=None,
-        observe_main=False,
-        observe_timeout=60,
-        check_name=CHECK,
-    )
+    p, _ = observer(mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(3, head, conclusion="failure")]}])
     with pytest.raises(mod.Rejected, match="failure"):
-        mod.Promoter(args).observe_main(head)
+        p.observe_main(head)
+
+
+def test_observe_main_ignores_a_green_push_run_of_a_different_workflow(git_ledger: Ledger, monkeypatch: Any) -> None:
+    """Audit F13: a successful push workflow on the SHA is not evidence unless it is the ledger workflow."""
+    mod = _load_promote_module()
+    head = "c" * 40
+    other = workflow_run(10, head, path=".github/workflows/pages.yml")
+    pages = [
+        {"workflow_runs": [other]},
+        {"workflow_runs": [other, workflow_run(11, head, status="queued", conclusion=None)]},
+        {"workflow_runs": [other, workflow_run(11, head)]},
+    ]
+    p, queries = observer(mod, git_ledger, monkeypatch, pages)
+    p.observe_main(head)
+    assert len(queries) == 3, "the observer must keep waiting while only the other workflow is green"
+    assert p.log["main_run_id"] == 11
+    assert p.log["ignored_runs"] == [mod.describe_run(other)]
+
+
+def test_observe_main_times_out_when_only_other_workflows_succeed(git_ledger: Ledger, monkeypatch: Any) -> None:
+    mod = _load_promote_module()
+    head = "d" * 40
+    p, _ = observer(
+        mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(12, head, path=".github/workflows/x.yml")]}]
+    )
+    with pytest.raises(mod.Rejected, match=WORKFLOW_PATH.replace(".", r"\.")):
+        p.observe_main(head)
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        pytest.param({"branch": "release"}, id="other-branch"),
+        pytest.param({"event": "pull_request"}, id="pr-event"),
+        pytest.param({"event": "workflow_dispatch"}, id="manual-event"),
+    ],
+)
+def test_observe_main_ignores_ledger_workflow_runs_not_from_a_push_to_main(
+    git_ledger: Ledger, monkeypatch: Any, run: dict[str, Any]
+) -> None:
+    mod = _load_promote_module()
+    head = "e" * 40
+    p, _ = observer(mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(13, head, **run)]}])
+    with pytest.raises(mod.Rejected, match="timed out"):
+        p.observe_main(head)
+
+
+def test_observe_main_ignores_the_ledger_workflow_run_for_another_sha(git_ledger: Ledger, monkeypatch: Any) -> None:
+    mod = _load_promote_module()
+    head = "f" * 40
+    p, _ = observer(mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(14, "0" * 40)]}])
+    with pytest.raises(mod.Rejected, match="timed out"):
+        p.observe_main(head)
+
+
+def test_observe_main_records_a_rerun_attempt_with_a_warning(git_ledger: Ledger, monkeypatch: Any) -> None:
+    mod = _load_promote_module()
+    head = "1" * 40
+    p, _ = observer(mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(15, head, attempt=2)]}])
+    p.observe_main(head)
+    assert p.log["main_run_attempt"] == 2
+    assert any("attempt 2" in w for w in p.log["warnings"])
+
+
+@pytest.mark.parametrize("attempt", [0, -1, None, "1", True])
+def test_observe_main_rejects_an_invalid_run_attempt(git_ledger: Ledger, monkeypatch: Any, attempt: Any) -> None:
+    mod = _load_promote_module()
+    head = "2" * 40
+    p, _ = observer(mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(16, head, attempt=attempt)]}])
+    with pytest.raises(mod.Rejected, match="run_attempt"):
+        p.observe_main(head)
+
+
+def test_observe_main_rejects_ambiguous_duplicate_ledger_runs(git_ledger: Ledger, monkeypatch: Any) -> None:
+    mod = _load_promote_module()
+    head = "3" * 40
+    p, _ = observer(mod, git_ledger, monkeypatch, [{"workflow_runs": [workflow_run(17, head), workflow_run(18, head)]}])
+    with pytest.raises(mod.Rejected, match="ambiguous"):
+        p.observe_main(head)
+
+
+def test_promote_cli_exposes_the_workflow_path_with_the_committed_default(git_ledger: Ledger) -> None:
+    result = git_ledger.run_script(PROMOTE, "--help")
+    assert_passes(result)
+    assert "--workflow-path" in output(result)
+    mod = _load_promote_module()
+    assert mod.DEFAULT_WORKFLOW_PATH == WORKFLOW_PATH
+    assert (SCRIPTS.parent / WORKFLOW_PATH).exists(), "the observed workflow path must be the committed workflow"
 
 
 def test_mixed_provenance_intake_gets_per_record_authority(flow: Flow) -> None:

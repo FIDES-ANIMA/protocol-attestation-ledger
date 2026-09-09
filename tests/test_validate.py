@@ -6,6 +6,8 @@ Case numbers refer to docs/plans/2026-08-30-protocol-attestation-ledger-v1-stage
 from __future__ import annotations
 
 import copy
+import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
@@ -13,6 +15,7 @@ import yaml
 from .conftest import (
     CONSTITUTION_HASH,
     PRIVATE_ARMOR,
+    REPOSITORY,
     STEWARD_LOGIN,
     AgentKey,
     Ledger,
@@ -27,12 +30,39 @@ from .conftest import (
 NOVA = "attestations/nova.yaml"
 
 
-def intake(ledger: Ledger, base: str, **ctx: object) -> tuple[str, object]:
+def intake(
+    ledger: Ledger,
+    base: str,
+    *,
+    actor: str = "alice",
+    author: str | None = None,
+    head_repo: str = REPOSITORY,
+    head_ref: str = "intake/alice/nova",
+    event_action: str = "synchronize",
+) -> tuple[str, subprocess.CompletedProcess[str]]:
+    """Commit the working tree as an intake head and validate it in intake mode against ``base``."""
     head = ledger.commit("intake change")
-    ctx.setdefault("head_ref", "intake/alice/nova")
-    ctx.setdefault("head_repo", "FIDES-ANIMA/protocol-attestation-ledger")
-    path = ledger.context(head_sha=head, base_sha=base, **ctx)  # type: ignore[arg-type]
+    path = ledger.context(
+        head_sha=head,
+        base_sha=base,
+        actor=actor,
+        author=author,
+        head_repo=head_repo,
+        head_ref=head_ref,
+        event_action=event_action,
+    )
     return head, ledger.validate("intake", base_ref=base, context=path)
+
+
+def shallow_clone(ledger: Ledger, depth: int = 1) -> Path:
+    """Clone the ledger's repository with truncated history, as a hostile or careless CI checkout would."""
+    dest = ledger.root.parent / f"shallow-{depth}"
+    subprocess.run(
+        ["git", "-c", "core.autocrlf=false", "clone", "-q", "--depth", str(depth), ledger.root.as_uri(), str(dest)],
+        check=True,
+        capture_output=True,
+    )
+    return dest
 
 
 # --------------------------------------------------------------------------- sanity
@@ -703,7 +733,9 @@ def test_amend_of_operator_reported_lineage_requires_same_authority(git_ledger: 
     v1 = declaration(contact="github:alice")
     v1_bytes = git_ledger.write_yaml(NOVA, v1)
     base = git_ledger.commit("v1")
-    git_ledger.write_yaml(NOVA, successor(v1, NOVA, v1_bytes, **{"attestation.notes": "bob edits"}))
+    v2 = successor(v1, NOVA, v1_bytes)
+    v2["attestation"]["notes"] = "bob edits"
+    git_ledger.write_yaml(NOVA, v2)
     _, result = intake(git_ledger, base, actor="bob", head_ref="intake/bob/nova")
     assert_fails(result, "authority")
 
@@ -784,6 +816,50 @@ def test_main_mode_rejects_history_that_rewrote_a_revocation(git_ledger: Ledger)
     git_ledger.write_yaml(rev_path, rev)
     git_ledger.commit("rewrite")
     assert_fails(git_ledger.validate("main"), rev_path)
+
+
+def test_main_mode_fails_closed_on_a_shallow_clone_that_hides_a_deleted_admission(git_ledger: Ledger) -> None:
+    """Audit F12: a depth-1 clone shows the deleting commit as a parentless root, so the walk saw no rewrite."""
+    git_ledger.write_yaml(NOVA, declaration())
+    git_ledger.admit(NOVA)
+    git_ledger.commit("admitted")
+    git_ledger.remove(git_ledger.event_name(NOVA, 1))
+    git_ledger.commit("oops")
+    assert_fails(git_ledger.validate("main"), "admissions/")  # the full history is rejected as before
+
+    clone = shallow_clone(git_ledger, depth=1)
+    result = git_ledger.validate("main", extra=["--root", str(clone)])
+    assert result.returncode == 2, output(result)
+    assert "shallow" in output(result)
+
+
+def test_release_modes_fail_closed_on_shallow_history_even_when_the_visible_slice_is_clean(
+    git_ledger: Ledger,
+) -> None:
+    key = AgentKey()
+    v1 = declaration(key=key)
+    v1_bytes = git_ledger.write_yaml(NOVA, v1)
+    git_ledger.commit("v1")
+    git_ledger.write_yaml(NOVA, successor(v1, NOVA, v1_bytes, key=key, **{"attestation.notes": "amended"}))
+    git_ledger.commit("v2")
+    assert_passes(git_ledger.validate("main"))
+
+    clone = shallow_clone(git_ledger, depth=1)
+    for mode in ("main", "admission", "intake"):
+        result = git_ledger.validate(mode, extra=["--root", str(clone)])
+        assert result.returncode == 2, f"{mode}: {output(result)}"
+        assert "shallow" in output(result), f"{mode}: {output(result)}"
+
+
+def test_release_modes_pass_after_the_shallow_clone_is_unshallowed(git_ledger: Ledger) -> None:
+    git_ledger.write_yaml(NOVA, declaration())
+    git_ledger.commit("v1")
+    git_ledger.write_yaml("attestations/axiom.yaml", declaration(name="Axiom", contact="github:bob"))
+    git_ledger.commit("v2")
+    clone = shallow_clone(git_ledger, depth=1)
+    assert git_ledger.validate("main", extra=["--root", str(clone)]).returncode == 2
+    subprocess.run(["git", "fetch", "-q", "--unshallow"], cwd=clone, check=True, capture_output=True)
+    assert_passes(git_ledger.validate("main", extra=["--root", str(clone)]))
 
 
 def test_yaml_parse_error_is_reported_per_file(ledger: Ledger) -> None:

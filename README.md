@@ -146,7 +146,7 @@ rm -rf "$GNUPGHOME"
 ```bash
 python -m pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest
-python -m ruff check scripts tests && python -m ruff format --check scripts tests && python -m mypy scripts
+python -m ruff check scripts tests && python -m ruff format --check scripts tests && python -m mypy
 python scripts/validate.py --mode working --schema schema/attestation.schema.json --all
 ```
 
