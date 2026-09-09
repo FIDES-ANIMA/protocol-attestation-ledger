@@ -1,4 +1,4 @@
-# Operator handoff — D0–D8 and I0–I4 done; I2 smoke, I5–I8 need the steward key
+# Operator handoff — D0–D8 and I0–I4 done, I2 frozen; I5–I8 remain
 
 Date: 2026-09-08. Plan: [`docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md`](../plans/2026-08-30-fpp-attestation-ledger-v1-staged.md).
 
@@ -128,42 +128,26 @@ gh api repos/FIDES-ANIMA/protocol-attestation-ledger --jq '{allow_merge_commit,a
 
 Hardening still open: pin `actions/checkout` / `actions/setup-python` to commit SHAs (`gh api repos/actions/checkout/git/ref/tags/<tag>`); a workflow edit, therefore now a steward-signed commit.
 
-### 5.5 I7, then `workflow-smoke` (operator, offline machine)
+### 5.5 I7 and `workflow-smoke` — done (2026-09-08)
 
-GitHub marks a commit **Verified** only if the signing key is uploaded to the committer's account and the committer email is both a UID on the key and a verified email of that account. The steward key's UID is `steward@fides-anima.org` (header of `.resources/FIDES-keys.txt`); `ovrsr`'s public email is `ovrsr.github@pm.me`. No steward secret key exists on this machine (both GnuPG keyrings queried empty). In order:
+Correction to the earlier text: the steward secret key **is** on the operator's machine, in the Gpg4win keyring under `%APPDATA%\gnupg` (binary `C:\Program Files\GnuPG\bin\gpg.exe`, GnuPG 2.5.18). The earlier "no secret key" statement came from probing a wrong path. The secret key is still never copied anywhere else; only `git commit -S` and `sign-admission.py` touch it, through gpg-agent.
 
-```bash
-gh auth refresh -h github.com -s admin:gpg_key,user            # interactive; adds the two missing scopes
-# In GitHub account settings add and verify steward@fides-anima.org on ovrsr (verification has no API).
-gh api -X POST user/gpg_keys -f name="FIDES-ANIMA steward" -F armored_public_key=@stewards/fides-anima.asc \
-  --jq '{key_id, emails:[.emails[]|{email,verified}]}'
-gh api user/gpg_keys --jq '.[] | select(.key_id|test("11CB1432$")) | {key_id, emails:[.emails[]|{email,verified}]}'
-# exit criterion: entry present and steward@fides-anima.org shows verified: true
-```
+| Item | Value (queried / observed) |
+|------|----------------------------|
+| I7 scopes | `gh auth status` → `admin:gpg_key, gist, read:org, repo, user, workflow` |
+| I7 key on `ovrsr` | `gh api user/gpg_keys` → `key_id 4A9E2AFF11CB1432`, `steward@fides-anima.org` `verified: true` |
+| Smoke commit | `68389cdb7785625aa1793a9973ce295b3e93bbf7`, empty, author/committer `FIDES-ANIMA Institute Steward <steward@fides-anima.org>`; `git verify-commit --raw` → `VALIDSIG 0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67 … 715E182192C546A612F8E6D64A9E2AFF11CB1432` |
+| GitHub verification | `commits/68389cd… .commit.verification` → `verified: true, reason: valid` (the ruleset accepted the push) |
+| Admission PR | [PR #2](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/2), branch `admission/workflow-smoke` |
+| Admission-mode run | [34292591813](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34292591813) `success`, `mode=admission`, `0 declaration(s)` |
+| Promotion | `promote-admission.py --pr 2 --expected-head 68389cd…` dry run then real: `main fast-forwarded 73541820b26d -> 68389cdb7785 and confirmed on the remote` |
+| Main-mode run | [34292804068](https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34292804068) `success`, `event: push`, `mode=main` |
 
-Then the bootstrap commit, on the machine holding the secret key (`GNUPGHOME` = steward keyring):
+**I2 is frozen** at `main = 68389cdb7785625aa1793a9973ce295b3e93bbf7`.
 
-```bash
-git clone https://github.com/FIDES-ANIMA/protocol-attestation-ledger && cd protocol-attestation-ledger
-git config user.name  "FIDES-ANIMA Institute Steward"
-git config user.email "steward@fides-anima.org"
-git config user.signingkey "0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67!"    # pinned signing subkey, not the primary
-git config gpg.program "<path to gpg 2.4>"
-git checkout -b admission/workflow-smoke origin/main
-git commit --allow-empty -S -m "workflow-smoke: prove the production admission path (no ledger change)"
-git verify-commit --raw HEAD 2>&1 | grep -E "VALIDSIG .*0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67"   # must match
-git push origin admission/workflow-smoke                      # rejected until I7 makes the signature Verified
-gh pr create --base main --head admission/workflow-smoke --title "workflow-smoke" --body "I2 bootstrap; changes no ledger file."
-gh pr checks <n> --watch                                       # ledger-validation success on this exact SHA
-python scripts/promote-admission.py --repo FIDES-ANIMA/protocol-attestation-ledger --pr <n> \
-  --expected-head "$(git rev-parse HEAD)" --log ~/promote-smoke.json --dry-run
-python scripts/promote-admission.py --repo FIDES-ANIMA/protocol-attestation-ledger --pr <n> \
-  --expected-head "$(git rev-parse HEAD)" --log ~/promote-smoke.json
-```
+Two operational notes from the run. First, the pinentry prompt timed out once (60 s) and rejected one mistyped passphrase before succeeding; nothing was committed on the failed attempts. Second, a helper defect: `promote-admission.py` recorded `main_check_run` pointing at the **PR** run `34292591813` rather than the push-triggered `main` run, because it matched check-runs by SHA and both runs share the SHA. It reported "green" after 6 s while the real `main` run was still in progress (it later passed). Fixed in the commit that carries this runbook update: the observe step now queries `actions/runs?branch=main&event=push&head_sha=<sha>` and waits for that run specifically (`test_observe_main_waits_for_the_push_run_not_the_pr_run`, `test_observe_main_rejects_a_failed_push_run`). That fix itself went to `main` through an `admission/*` branch with a signed commit and was promoted with the fixed helper, which is the live test of the fix.
 
-Fixture coverage for exactly this commit shape: `test_case29_workflow_smoke_empty_signed_commit_passes` / `_unsigned_empty_commit_fails`. I2 is frozen when the smoke SHA is `main` with green `admission` and `main` runs; record PR URL, SHA, and run ids here in a signed commit.
-
-### 5.6 I5 — admit the seeds (operator, after 5.5)
+### 5.6 I5 — admit the seeds (next step)
 
 Live values as of this runbook: intake PR **#1**, head **`a91c47360514da6dbcea78553ac0d96f715e5e37`**, author `ovrsr`, check `ledger-validation` success (run 34288054222). Re-query before use; `query-intake` refuses a moved head.
 
@@ -180,7 +164,7 @@ python scripts/prepare-admission.py build --action attest --action-id seeds-2026
   --manifest ~/manifest-seeds.json
 ```
 
-The `--authority-*` values describe the operator-reported record (Hermes). The helper assigns `agent-signature` / Axiom's `fpp_id` to Axiom's event itself, because `verify-signatures.py` requires that for an agent-signed record (`test_mixed_provenance_intake_gets_per_record_authority`; a mixed PR could not be admitted in one candidate before this fix). Then offline: `sign-admission.py --manifest ~/manifest-seeds.json`, push `admission/seeds-2026-09`, open the PR, wait for green on the exact SHA, `promote-admission.py --pr <n> --expected-head <sha> --intake-review-json ~/review-seeds.json`. Close PR #1 with a link to the two `0001` events. I6 (fresh-clone consume) follows.
+The `--authority-*` values describe the operator-reported record (Hermes). The helper assigns `agent-signature` / Axiom's `fpp_id` to Axiom's event itself, because `verify-signatures.py` requires that for an agent-signed record (`test_mixed_provenance_intake_gets_per_record_authority`; a mixed PR could not be admitted in one candidate before this fix). Then, with the steward keyring (`--gpg "C:/Program Files/GnuPG/bin/gpg.exe"` on this machine): `sign-admission.py --manifest ~/manifest-seeds.json`, push `admission/seeds-2026-09`, open the PR, wait for green on the exact SHA, `promote-admission.py --pr <n> --expected-head <sha> --intake-review-json ~/review-seeds.json`. Close PR #1 with a link to the two `0001` events. I6 (fresh-clone consume) follows.
 
 ## 6. I3 — Axiom identity and the seed bytes (recorded)
 

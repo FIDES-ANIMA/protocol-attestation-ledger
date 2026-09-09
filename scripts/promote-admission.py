@@ -302,21 +302,27 @@ class Promoter:
             )
             self.step("main workflow observation skipped (--pr-json without --observe-main)")
             return
+        # The admission PR run and the post-promotion main run share the same head SHA, so check-runs on the
+        # commit cannot tell them apart. Only a workflow run triggered by the `push` event on `main` for this
+        # exact SHA counts as the main-mode result (first live promotion, 2026-09-08, recorded the PR run here).
         deadline = time.time() + self.args.observe_timeout
         while time.time() < deadline:
-            runs = gh_json("api", f"repos/{self.args.repo}/commits/{head}/check-runs?per_page=100").get(
-                "check_runs", []
-            )
-            ours = [c for c in runs if c.get("name") == self.args.check_name and c.get("check_suite")]
-            done = [c for c in ours if c.get("status") == "completed"]
-            if done and any(c.get("conclusion") == "success" for c in done):
-                self.log["main_check_run"] = done[-1].get("html_url")
-                self.step("main workflow is green on the promoted SHA")
+            runs = gh_json(
+                "api",
+                f"repos/{self.args.repo}/actions/runs?branch=main&event=push&head_sha={head}&per_page=20",
+            ).get("workflow_runs", [])
+            ours = [r for r in runs if r.get("head_sha") == head and r.get("event") == "push"]
+            done = [r for r in ours if r.get("status") == "completed"]
+            if done and any(r.get("conclusion") == "success" for r in done):
+                run = next(r for r in done if r.get("conclusion") == "success")
+                self.log["main_run"] = run.get("html_url")
+                self.log["main_run_id"] = run.get("id")
+                self.step(f"main workflow (push event) is green on the promoted SHA: run {run.get('id')}")
                 return
-            if done and all(c.get("conclusion") not in (None, "success") for c in done):
+            if done and all(r.get("conclusion") not in (None, "success") for r in done):
                 raise Rejected(f"main workflow concluded {done[-1].get('conclusion')!r} on {head[:12]}")
             time.sleep(15)
-        raise Rejected("timed out waiting for the main workflow; do not consider the promotion complete")
+        raise Rejected("timed out waiting for the main (push) workflow run; do not consider the promotion complete")
 
 
 def main(argv: list[str] | None = None) -> int:

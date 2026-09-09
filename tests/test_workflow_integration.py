@@ -7,6 +7,8 @@ validators on the promoted tree. Negative trials show the helpers reject what th
 
 from __future__ import annotations
 
+import argparse
+import importlib.util
 import json
 import os
 import subprocess
@@ -470,6 +472,82 @@ def test_operator_reported_attest_uses_pr_author_authority(flow: Flow) -> None:
     assert ev["review"]["headSha"] == head
     assert ev["review"]["declarationHashes"] == {NOVA: sha256_bytes(raw)}
     assert ev["actor"]["signingSubkeyRef"] == f"openpgp:{flow.ledger.steward.signing.lower()}"
+
+
+def _load_promote_module() -> Any:
+    spec = importlib.util.spec_from_file_location("promote_admission_under_test", PROMOTE)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_observe_main_waits_for_the_push_run_not_the_pr_run(git_ledger: Ledger, monkeypatch: Any) -> None:
+    """The PR run and the post-promotion main run share a head SHA; only the push-event run on main counts."""
+    mod = _load_promote_module()
+    head = "a" * 40
+    queries: list[str] = []
+    pages = [
+        {"workflow_runs": []},  # main run not created yet
+        {"workflow_runs": [{"id": 2, "head_sha": head, "event": "push", "status": "in_progress", "conclusion": None}]},
+        {
+            "workflow_runs": [
+                {
+                    "id": 2,
+                    "head_sha": head,
+                    "event": "push",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "html_url": "https://github.com/x/y/actions/runs/2",
+                }
+            ]
+        },
+    ]
+
+    def fake_gh_json(*args: str) -> Any:
+        queries.append(args[-1])
+        return pages.pop(0)
+
+    monkeypatch.setattr(mod, "gh_json", fake_gh_json)
+    monkeypatch.setattr(mod.time, "sleep", lambda _s: None)
+    args = argparse.Namespace(
+        root=str(git_ledger.root),
+        repo=REPOSITORY,
+        dry_run=False,
+        pr_json=None,
+        observe_main=False,
+        observe_timeout=60,
+        check_name=CHECK,
+    )
+    p = mod.Promoter(args)
+    p.observe_main(head)
+    assert all("event=push" in q and "branch=main" in q and f"head_sha={head}" in q for q in queries)
+    assert p.log["main_run_id"] == 2 and p.log["main_run"].endswith("/runs/2")
+
+
+def test_observe_main_rejects_a_failed_push_run(git_ledger: Ledger, monkeypatch: Any) -> None:
+    mod = _load_promote_module()
+    head = "b" * 40
+    monkeypatch.setattr(
+        mod,
+        "gh_json",
+        lambda *a: {
+            "workflow_runs": [
+                {"id": 3, "head_sha": head, "event": "push", "status": "completed", "conclusion": "failure"}
+            ]
+        },
+    )
+    args = argparse.Namespace(
+        root=str(git_ledger.root),
+        repo=REPOSITORY,
+        dry_run=False,
+        pr_json=None,
+        observe_main=False,
+        observe_timeout=60,
+        check_name=CHECK,
+    )
+    with pytest.raises(mod.Rejected, match="failure"):
+        mod.Promoter(args).observe_main(head)
 
 
 def test_mixed_provenance_intake_gets_per_record_authority(flow: Flow) -> None:
