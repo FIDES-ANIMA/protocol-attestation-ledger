@@ -1,0 +1,44 @@
+{
+  "action": "admit",
+  "actor": {
+    "keyRef": "openpgp:715e182192c546a612f8e6d64a9e2aff11cb1432",
+    "signingSubkeyRef": "openpgp:0dcd3952b0ba0130e02a5fc70dbbe66fec6d0c67",
+    "type": "steward"
+  },
+  "admissionStatus": "admitted",
+  "authority": {
+    "basis": "agent-signature",
+    "evidenceRef": null,
+    "principal": "fpp:ed25519:1231e3344fc6f3aa0d5c43c58396a2a4b02606a879b5bee86438bf478199a734"
+  },
+  "correctionRef": null,
+  "declarationAction": "attest",
+  "occurredAt": "2026-09-09T00:23:57Z",
+  "previousEvent": null,
+  "reason": "Steward reviewed PR #1: hermes-default operator-reported reviewed; axiom agent-signed accepted.",
+  "reasonCode": "intake-reviewed",
+  "record": {
+    "declarationId": "98e0df7c-a9fb-4db0-9e3a-13176c79eeb4",
+    "path": "attestations/axiom.yaml",
+    "sha256": "5e4730a2eea75ada65124742a30b4ff231566f5024b103ac950251bbbf4a20d9",
+    "version": 1
+  },
+  "request": {
+    "evidence": [],
+    "requestedBy": "github:ovrsr",
+    "sourceRef": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/1",
+    "sourceType": "github-pr"
+  },
+  "review": {
+    "checkRun": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/actions/runs/34288054222/job/102268093095",
+    "declarationHashes": {
+      "attestations/axiom.yaml": "5e4730a2eea75ada65124742a30b4ff231566f5024b103ac950251bbbf4a20d9",
+      "attestations/hermes-default.yaml": "96d8f7b4413bccb98fa30d9880f3db7c5d44cf4682170a765d8b20215b73e512"
+    },
+    "headSha": "a91c47360514da6dbcea78553ac0d96f715e5e37",
+    "intakePr": "https://github.com/FIDES-ANIMA/protocol-attestation-ledger/pull/1"
+  },
+  "schemaVersion": 1,
+  "sequence": 1,
+  "slugReleased": false
+}
