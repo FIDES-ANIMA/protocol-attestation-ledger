@@ -1,4 +1,4 @@
-# Operator handoff — D0–D8 and I0–I4 done, I2 frozen; I5–I8 remain
+# Operator handoff — D0–D8 and I0–I7 done, I2 frozen, seeds admitted; I8 remains
 
 Date: 2026-09-08. Plan: [`docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md`](../plans/2026-08-30-fpp-attestation-ledger-v1-staged.md).
 
@@ -20,7 +20,7 @@ Every value below marked **queried** was read from the live environment on this 
 
 Local toolchain used: Python 3.12 venv (`.venv/`), GnuPG 2.4.9 (Gpg4win), `ruff`, `mypy`; all clean. CI pins Python 3.11 per the plan; the code uses nothing newer than 3.11.
 
-Repository `main` at handoff: `ada6952 Make fixture subprocesses hermetic against the host's GITHUB_* environment` (all commits unsigned; the first pinned-subkey commit is the I2 `workflow-smoke`).
+Repository `main` at the original handoff: `ada6952 Make fixture subprocesses hermetic against the host's GITHUB_* environment` (all commits unsigned; the first pinned-subkey commit is the I2 `workflow-smoke`). At the end of this runbook `main` is `72d95bc attest: seeds-2026-09` (§5.6), and every commit after `ada6952` is pinned-subkey signed and GitHub-verified.
 
 ## 2. Live environment (queried 2026-09-08)
 
@@ -147,9 +147,51 @@ Correction to the earlier text: the steward secret key **is** on the operator's 
 
 Two operational notes from the run. First, the pinentry prompt timed out once (60 s) and rejected one mistyped passphrase before succeeding; nothing was committed on the failed attempts. Second, a helper defect: `promote-admission.py` recorded `main_check_run` pointing at the **PR** run `34292591813` rather than the push-triggered `main` run, because it matched check-runs by SHA and both runs share the SHA. It reported "green" after 6 s while the real `main` run was still in progress (it later passed). Fixed in the commit that carries this runbook update: the observe step now queries `actions/runs?branch=main&event=push&head_sha=<sha>` and waits for that run specifically (`test_observe_main_waits_for_the_push_run_not_the_pr_run`, `test_observe_main_rejects_a_failed_push_run`). That fix itself went to `main` through an `admission/*` branch with a signed commit and was promoted with the fixed helper, which is the live test of the fix.
 
-### 5.6 I5 — admit the seeds (next step)
+### 5.6 I5 — admit the seeds — done (2026-09-08, UTC 2026-09-09)
 
-Live values as of this runbook: intake PR **#1**, head **`a91c47360514da6dbcea78553ac0d96f715e5e37`**, author `ovrsr`, check `ledger-validation` success (run 34288054222). Re-query before use; `query-intake` refuses a moved head.
+Intake PR **#1**, head **`a91c47360514da6dbcea78553ac0d96f715e5e37`**, author `ovrsr`, check `ledger-validation` success (run 34288054222). The commands below were run as written, with one deviation recorded in 5.6.1.
+
+| Step | Queried result |
+|------|----------------|
+| `query-intake` + `build` | `~/review-seeds.json`, `~/manifest-seeds.json`; branch `admission/seeds-2026-09` off `origin/main` `0cd4e491` |
+| `sign-admission.py` | 2 `.record.asc` + 2 `0001.json` + 2 `.json.asc`, all `VALIDSIG 0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67`; events `occurredAt 2026-09-09T00:23:57Z`, `reasonCode intake-reviewed`, `review.headSha a91c4736`; authority Hermes `github-pr-author-match`/`github:ovrsr`, Axiom `agent-signature`/`fpp:ed25519:1231e334…9a734` |
+| Signed commit | `72d95bcfb1e9da0eeeaa101ed4617646b530df21` `attest: seeds-2026-09`, `FIDES-ANIMA Steward <steward@fides-anima.org>`, `git log %G?` = `G`; GitHub `verification.verified=true reason=valid` |
+| Local pre-push check | `ci-context.py` on a synthesized `pull_request` payload → `mode=admission`; `validate.py` and `verify-signatures.py --mode admission --base-ref 0cd4e491` both OK |
+| Push + PR | ruleset accepted the push to `admission/seeds-2026-09`; PR **#4**; `ledger-validation` run 34295404078 success on the exact SHA, log shows `mode=admission`, `2 declaration(s), 2 admission chain(s)`; `mergeStateStatus=BLOCKED` (expected: merges are disabled) |
+| Promotion | `promote-admission.py --pr 4 --expected-head 72d95bc… --intake-review-json ~/review-seeds.json` dry run then real: `main fast-forwarded 0cd4e491e59d -> 72d95bcfb1e9 and confirmed on the remote`; observer waited for the **push** run 34295611314 (distinct from the PR run), log shows `OK mode=main: 2 declaration(s), 2 admission chain(s)` |
+| Housekeeping | GitHub marked PR #4 `MERGED` (fast-forward to its head); PR #1 closed unmerged with a comment linking both `0001.json` events at `72d95bc` |
+
+#### 5.6.1 Deviation: the commit had to be redone by hand
+
+`sign-admission.py` produced and staged all six artifacts but the operator's commit attempt failed twice with `gpg: skipped "0dcd…0c67!": No secret key` (once from PowerShell, once from Git Bash). Two causes, both host-local:
+
+1. `gpg.program` is unset in this checkout, so `git commit -S` called Git for Windows' bundled `/usr/bin/gpg`, whose keyring (`~/.gnupg`) holds no secret key. The steward key lives in the Gpg4win keyring (`C:/Program Files/GnuPG/bin/gpg.exe`).
+2. The checkout's `user.email` is `contact@fides-anima.org`. GitHub verifies a signature only when the committer email is both a UID on the key and verified on the account; that is `steward@fides-anima.org` (the address the I7 upload was verified against). A commit with `contact@` would sign locally and then be rejected by the `admission/**` ruleset as unverified.
+
+The staged tree was inspected before committing (all four `.asc` verify against the pin from an ephemeral home; declaration SHA-256s equal the manifest; events carry per-record authority), then committed with per-command overrides and no change to the repo config:
+
+```bash
+git -c "gpg.program=C:/Program Files/GnuPG/bin/gpg.exe" -c "user.signingkey=0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67!" \
+    -c "user.name=FIDES-ANIMA Steward" -c "user.email=steward@fides-anima.org" commit -S -m "attest: seeds-2026-09"
+```
+
+Note that `sign-admission.py` itself sets `gpg.program` and `user.signingkey` for its own commit (and would have avoided cause 1), but not the author/committer identity; it inherits `user.email` from the checkout. Before the next admission on this machine either set `user.email=steward@fides-anima.org` and `gpg.program` in the checkout's local config, or run `sign-admission.py` with `GIT_AUTHOR_EMAIL`/`GIT_COMMITTER_EMAIL` exported. PowerShell also does not accept `&&` in this Windows PowerShell version; run the commands from Git Bash.
+
+### 5.7 I6 — fresh-clone consume — done (2026-09-08)
+
+From a new clone of `main` at `72d95bc` into a temp directory and a new empty `GNUPGHOME` (native `gpg.exe` needs a Windows-style path; an MSYS `/tmp/...` path is not usable):
+
+1. `stewards/expected-key-ref.txt` = `openpgp:715e182192c546a612f8e6d64a9e2aff11cb1432`; `gpg --import-options show-only` on `stewards/fides-anima.asc` reports primary fingerprint `715E182192C546A612F8E6D64A9E2AFF11CB1432` — match, then imported. `--list-secret-keys` in that home: none.
+2. `gpg --verify` of both `.record.asc` against their YAML and both `0001.json.asc` against their JSON: four `VALIDSIG 0DCD3952B0BA0130E02A5FC70DBBE66FEC6D0C67`. `sha256sum` of the two YAMLs equals the content addresses in the file names.
+3. `validate.py --mode main --all --summary` and `verify-signatures.py --mode main`: both OK.
+4. Derived status (from the `--summary` output): `axiom.yaml` lineage `98e0df7c…` v1, lifecycle `accepted`, **agent-signed**, admission `admitted`; `hermes-default.yaml` lineage `60f012f5…` v1, lifecycle `reviewed`, **operator-reported**, admission `admitted`. `currently admitted declarations: 2 (agent-signed: 1, operator-reported: 1)`.
+5. Maximum justified conclusion, as printed by the tools: FIDES-ANIMA admitted these bytes as declaration-only records; for `hermes-default`, `github:ovrsr` reported the lifecycle state; for `axiom`, the agent's own Ed25519 signature over the canonical payload authenticates authorship. Neither proves consent or behavioral conformance.
+
+AC5 is met on the evidence above; the operator declares it done. The temp clone and `GNUPGHOME` were deleted afterwards.
+
+Remaining: **I8** (upstream discoverability PR on `ovrsr/freedom-preserving-protocol`, operator-owned; see plan §I8 for the claim-class wording constraints).
+
+#### Commands as run for I5 (kept for the next admission)
 
 ```bash
 python scripts/prepare-admission.py query-intake --repo FIDES-ANIMA/protocol-attestation-ledger --pr 1 \
@@ -164,7 +206,7 @@ python scripts/prepare-admission.py build --action attest --action-id seeds-2026
   --manifest ~/manifest-seeds.json
 ```
 
-The `--authority-*` values describe the operator-reported record (Hermes). The helper assigns `agent-signature` / Axiom's `fpp_id` to Axiom's event itself, because `verify-signatures.py` requires that for an agent-signed record (`test_mixed_provenance_intake_gets_per_record_authority`; a mixed PR could not be admitted in one candidate before this fix). Then, with the steward keyring (`--gpg "C:/Program Files/GnuPG/bin/gpg.exe"` on this machine): `sign-admission.py --manifest ~/manifest-seeds.json`, push `admission/seeds-2026-09`, open the PR, wait for green on the exact SHA, `promote-admission.py --pr <n> --expected-head <sha> --intake-review-json ~/review-seeds.json`. Close PR #1 with a link to the two `0001` events. I6 (fresh-clone consume) follows.
+The `--authority-*` values describe the operator-reported record (Hermes). The helper assigns `agent-signature` / Axiom's `fpp_id` to Axiom's event itself, because `verify-signatures.py` requires that for an agent-signed record (`test_mixed_provenance_intake_gets_per_record_authority`; a mixed PR could not be admitted in one candidate before this fix). Then, with the steward keyring (`--gpg "C:/Program Files/GnuPG/bin/gpg.exe"` on this machine): `sign-admission.py --manifest ~/manifest-seeds.json`, push `admission/seeds-2026-09`, open the PR, wait for green on the exact SHA, `promote-admission.py --pr <n> --expected-head <sha> --intake-review-json ~/review-seeds.json`. Close PR #1 with a link to the two `0001` events. Outcome: §5.6 table; the manual-commit deviation: §5.6.1.
 
 ## 6. I3 — Axiom identity and the seed bytes (recorded)
 
