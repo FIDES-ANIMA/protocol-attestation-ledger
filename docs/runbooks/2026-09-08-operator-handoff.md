@@ -1,4 +1,4 @@
-# Operator handoff — D0–D8 and I0–I7 done, I2 frozen, seeds admitted; I8 remains
+# Operator handoff — D0–D8 and I0–I8 done, I2 frozen, seeds admitted, upstream PR opened
 
 Date: 2026-09-08. Plan: [`docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md`](../plans/2026-08-30-fpp-attestation-ledger-v1-staged.md).
 
@@ -189,7 +189,15 @@ From a new clone of `main` at `72d95bc` into a temp directory and a new empty `G
 
 AC5 is met on the evidence above; the operator declares it done. The temp clone and `GNUPGHOME` were deleted afterwards.
 
-Remaining: **I8** (upstream discoverability PR on `ovrsr/freedom-preserving-protocol`, operator-owned; see plan §I8 for the claim-class wording constraints).
+### 5.8 I8 — upstream discoverability PR — opened (2026-09-08)
+
+The FPP repository is `FIDES-ANIMA/protocol` (queried from the local checkout's `origin`; the plan's `ovrsr/freedom-preserving-protocol` is stale). `MASTER_CONTEXT.md` there already listed the ledger as optional install step 8 but `README.md` did not link it. Opened [FIDES-ANIMA/protocol#1](https://github.com/FIDES-ANIMA/protocol/pull/1) from branch `docs/link-attestation-ledger` (commit `2d06eaa`, README only, 6 insertions): a `### Declare (optional)` subsection under Install naming the ledger the **authoritative record of FIDES-ANIMA-admitted adoption declarations**, claim class **declaration-only**, stating what an admitted record does and does not prove. The words `consent`, `compliance`, `peer-advertisable`, `boundary_attested` occur in the diff only in negated form (checked with `gh pr diff | rg`). The FPP repo's own conventions were followed (unsigned commit as `Steward <contact@fides-anima.org>`, no rulesets). Merge is the operator's call; the exit criterion "upstream PR opened; diff contains no capability overclaim" is met.
+
+### 5.9 Local config change on this machine (2026-09-08)
+
+Per §5.6.1, the ledger checkout's local git config now has `gpg.program=C:/Program Files/GnuPG/bin/gpg.exe` and `user.email=steward@fides-anima.org` (`user.name` left as `ovrsr`; the name does not affect GitHub verification). `sign-admission.py` will therefore commit without the manual step. This is host-local state, not repository content.
+
+All plan stages D0–D8 and I0–I8 are now done or, for I8, opened and awaiting the operator's merge.
 
 #### Commands as run for I5 (kept for the next admission)
 
