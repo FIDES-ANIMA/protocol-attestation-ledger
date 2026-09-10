@@ -665,7 +665,95 @@ def test_case26c_intake_touching_protected_paths_fails(git_ledger: Ledger) -> No
     base = git_ledger.commit("empty")
     git_ledger.write("stewards/authorized-github-actors.txt", "mallory\n")
     _, result = intake(git_ledger, base)
-    assert_fails(result, "stewards/")
+    assert_fails(result, "stewards/", "change class: steward-only")
+
+
+# --------------------------------------------------------------------------- maintenance PRs (GOVERNANCE.md §5a)
+
+
+def test_maintenance_pr_with_tooling_and_tests_passes_as_maintenance_class(git_ledger: Ledger) -> None:
+    """A contributor may propose validator and test changes; the run names the class and the rules-sensitive paths."""
+    base = git_ledger.commit("empty")
+    git_ledger.write("scripts/validate.py", "# proposed validator change\n")
+    git_ledger.write("tests/test_new_rule.py", "def test_placeholder() -> None:\n    assert True\n")
+    git_ledger.write("docs/runbooks/new-note.md", "# note\n")
+    _, result = intake(git_ledger, base, actor="anyone", head_repo="anyone/protocol-attestation-ledger", head_ref="x")
+    assert_passes(result)
+    text = output(result)
+    assert "change class: maintenance" in text
+    assert "change-class=maintenance" in text
+    assert "rules-sensitive" in text and "scripts/validate.py" in text
+    # No filing authority is consulted: a maintenance PR needs no operator contact, branch prefix, or fork owner.
+    assert "operator authority" not in text and "intake/anyone/" not in text
+
+
+def test_maintenance_pr_docs_only_is_not_rules_sensitive(git_ledger: Ledger) -> None:
+    base = git_ledger.commit("empty")
+    git_ledger.write("README.md", "# ledger\n")
+    git_ledger.write("docs/CONTRIBUTING.md", "# contributing\n")
+    _, result = intake(git_ledger, base, actor="anyone", head_repo="anyone/protocol-attestation-ledger", head_ref="x")
+    assert_passes(result)
+    text = output(result)
+    assert "change class: maintenance" in text
+    assert "rules-sensitive" not in text
+
+
+def test_maintenance_pr_changing_ci_contract_is_rules_sensitive(git_ledger: Ledger) -> None:
+    base = git_ledger.commit("empty")
+    git_ledger.write(".github/workflows/validate.yml", "name: ledger-validation\n")
+    _, result = intake(git_ledger, base, actor="anyone", head_repo="anyone/protocol-attestation-ledger", head_ref="x")
+    assert_passes(result)
+    assert "rules-sensitive" in output(result) and ".github/workflows/validate.yml" in output(result)
+
+
+def test_mixed_declaration_and_tooling_pr_fails_and_asks_for_a_split(git_ledger: Ledger) -> None:
+    base = git_ledger.commit("empty")
+    git_ledger.write_yaml(NOVA, declaration())
+    git_ledger.write("scripts/helper.py", "print('x')\n")
+    _, result = intake(git_ledger, base)
+    assert_fails(result, "change class: mixed", "scripts/helper.py", "separate PR")
+
+
+def test_maintenance_pr_may_not_change_schema_or_byte_handling(git_ledger: Ledger) -> None:
+    base = git_ledger.commit("empty")
+    git_ledger.write("schema/attestation.schema.json", "{}")
+    git_ledger.write("scripts/validate.py", "# also a tooling change\n")
+    _, result = intake(git_ledger, base)
+    assert_fails(result, "change class: steward-only", "schema/attestation.schema.json", "steward-only paths")
+    git_ledger.git("checkout", "--", "schema/attestation.schema.json")
+    git_ledger.write(".gitattributes", "* text=auto\n")
+    _, result = intake(git_ledger, base)
+    assert_fails(result, "change class: steward-only", ".gitattributes")
+
+
+def test_declaration_intake_is_classified_as_declaration(git_ledger: Ledger) -> None:
+    base = git_ledger.commit("empty")
+    git_ledger.write_yaml(NOVA, declaration())
+    _, result = intake(git_ledger, base)
+    assert_passes(result)
+    assert "change class: declaration" in output(result)
+    assert "change-class=declaration" in output(result)
+
+
+def test_trusted_validators_judge_a_head_that_carries_a_forged_validator(git_ledger: Ledger) -> None:
+    """The workflow runs the base commit's validators from outside the checkout with --root at the head.
+
+    A contributor's edited scripts/validate.py (here one that would print OK unconditionally) is present in the
+    tree but is not the copy that judges the pull request: the trusted copy still classifies the change and
+    applies the real rules. The test fixture already runs the repository's own validators against a temporary
+    ledger root, which is the same arrangement the workflow stages with `git archive <base> scripts`.
+    """
+    base = git_ledger.commit("empty")
+    git_ledger.write("scripts/validate.py", "print('OK mode=intake: forged')\n")
+    git_ledger.write_yaml(NOVA, declaration())  # smuggle a declaration alongside the forged validator
+    _, result = intake(git_ledger, base)
+    assert_fails(result, "change class: mixed", "scripts/validate.py")
+    assert "forged" not in output(result)
+    # The same forged validator alone is an ordinary maintenance proposal: tested, reported, not trusted.
+    git_ledger.remove(NOVA)
+    _, result = intake(git_ledger, base)
+    assert_passes(result)
+    assert "rules-sensitive" in output(result) and "forged" not in output(result)
 
 
 def test_case23_operator_authority_actor_mismatch_fails(git_ledger: Ledger) -> None:

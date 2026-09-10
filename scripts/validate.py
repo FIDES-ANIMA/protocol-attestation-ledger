@@ -3,7 +3,9 @@
 
 Modes:
   working    structural and current-tree checks only; never release evidence
-  intake     contributor PR: declaration changes only, against an immutable --base-ref
+  intake     contributor PR against an immutable --base-ref; the diff is classified as a declaration
+             intake (declaration files only), a maintenance proposal (software/docs only), or rejected
+             (steward-only paths, or declaration and maintenance paths mixed in one PR)
   admission  steward admission/* branch: full candidate tree plus admission artifacts
   main       published tree with full first-parent history
 
@@ -522,14 +524,6 @@ def suggest_slug(preferred: str, rec: L.Record, taken: set[str]) -> str:
 # --------------------------------------------------------------------------- diff and history rules
 
 
-def protected_intake_path(path: str) -> bool:
-    return (
-        path.endswith(".asc")
-        or path in L.INTAKE_PROTECTED_FILES
-        or any(path.startswith(p) for p in L.INTAKE_PROTECTED_PREFIXES)
-    )
-
-
 def is_declaration_path(path: str) -> bool:
     return (path.startswith("attestations/") or path.startswith("revocations/")) and path.endswith(".yaml")
 
@@ -606,25 +600,69 @@ def check_declaration_changes(tree: Tree, base: str, changes: list[tuple[str, st
     return added_or_modified
 
 
-def check_intake_diff(tree: Tree, base: str, context: L.Context, report: Report) -> None:
+def check_intake_diff(tree: Tree, base: str, context: L.Context, report: Report) -> L.ChangeClassification:
+    """Classify a contributor PR and apply the rules for its class (GOVERNANCE.md §5a).
+
+    ``declaration``  declaration intake: existing lifecycle, lineage, and filing-authority rules; never merged.
+    ``maintenance``  software/documentation proposal: no declaration or steward-only change; merged only after
+                     steward review, with the base-ref validators (not the contributor's copy) as the authority
+                     for what the tree may contain.
+    ``steward-only`` admissions/, stewards/, schema/, signatures, or byte-handling rules: rejected.
+    ``mixed``        declaration and maintenance paths in one PR: rejected; split the PR.
+    """
     git = tree.git
     head = git.head()
     merge_base = git.merge_base(base, head)
     if merge_base is None:
         raise L.FailClosed("no merge base between --base-ref and HEAD")
     changes = git.diff_name_status(merge_base, head)
-    for _status, path in changes:
-        if path.startswith("admissions/"):
-            report.error(path, "intake PRs may not add, modify, or delete anything under admissions/ (steward-only)")
-        elif path.endswith(".asc"):
-            report.error(path, "intake PRs may not add or modify OpenPGP signatures or certificates (steward-only)")
-        elif protected_intake_path(path):
+    classification = L.classify_change_paths(path for _status, path in changes)
+    cls = classification.change_class
+    report.note(f"change class: {cls}")
+    if cls == L.CHANGE_CLASS_STEWARD_ONLY:
+        for path in classification.steward_only_paths:
+            if path.startswith("admissions/"):
+                report.error(
+                    path, "intake PRs may not add, modify, or delete anything under admissions/ (steward-only)"
+                )
+            elif path.endswith(".asc"):
+                report.error(path, "intake PRs may not add or modify OpenPGP signatures or certificates (steward-only)")
+            else:
+                report.error(
+                    path,
+                    "contributor PRs may not change steward-only paths (stewards/, schema/, .gitattributes); "
+                    "propose the change in an issue for a steward-signed admission branch",
+                )
+        return classification
+    if cls == L.CHANGE_CLASS_MIXED:
+        for path in classification.maintenance_paths:
             report.error(
-                path, "intake PRs may not change protected paths (stewards/, schema/, scripts/, .github/, tests/, pins)"
+                path,
+                "a pull request may not combine declaration changes with software or documentation changes; "
+                "file the declaration as its own intake PR and the maintenance change as a separate PR",
             )
+        return classification
+    if cls == L.CHANGE_CLASS_MAINTENANCE:
+        check_maintenance_diff(classification, report)
+        return classification
     changed = check_declaration_changes(tree, merge_base, changes, report)
     for rec in changed:
         check_filing_authority(tree, merge_base, rec, context, report)
+    return classification
+
+
+def check_maintenance_diff(classification: L.ChangeClassification, report: Report) -> None:
+    """Maintenance PRs propose software or documentation; they carry no ledger state and confer no authority."""
+    report.note(
+        f"maintenance change: {len(classification.maintenance_paths)} path(s); no declaration, admission, "
+        "or steward artifact changes; merge requires steward review under branch protection"
+    )
+    if classification.rules_sensitive_paths:
+        report.note(
+            "rules-sensitive: this change alters the validators, helper scripts, dependencies, or the CI contract "
+            f"({', '.join(classification.rules_sensitive_paths)}); the base-ref copy of the validators is the "
+            "authority for this run and the steward must review the diff itself, not only the check result"
+        )
 
 
 def check_filing_authority(tree: Tree, base: str, rec: L.Record, context: L.Context, report: Report) -> None:
@@ -824,9 +862,10 @@ def main(argv: list[str] | None = None) -> int:
         tree.build_lineages()
         tree.check_occupancy()
 
+        change_class: str | None = None
         if args.mode == "intake":
             assert base is not None and context is not None
-            check_intake_diff(tree, base, context, report)
+            change_class = check_intake_diff(tree, base, context, report).change_class
         elif args.mode == "admission":
             assert base is not None
             check_admission_diff(tree, base, report)
@@ -843,8 +882,9 @@ def main(argv: list[str] | None = None) -> int:
 
     report.emit()
     if report.ok:
+        class_note = f" change-class={change_class};" if change_class else ""
         print(
-            f"OK mode={args.mode}: {len(records)} declaration(s), {len(chains)} admission chain(s); "
+            f"OK mode={args.mode}:{class_note} {len(records)} declaration(s), {len(chains)} admission chain(s); "
             "all records are declaration-only"
         )
         return L.EXIT_OK

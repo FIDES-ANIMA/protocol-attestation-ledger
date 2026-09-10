@@ -8,6 +8,13 @@
 #   pull_request -> main from a base-repo admission/* branch by a steward     : admission
 #   push to main                                                              : main
 #
+# In intake mode the diff is classified by validate.py as a declaration intake or a maintenance
+# proposal (GOVERNANCE.md §5a). For pull requests the ledger rules are applied by the validators as
+# they exist at the base commit, staged outside the checkout, so a contributor's edit to scripts/
+# is tested by this run but is never the copy that judges its own admissibility. A pull_request
+# workflow still executes the head's copy of this file; a change to .github/ is therefore reported
+# as rules-sensitive and the steward reviews the diff, not only the check result.
+#
 # The check is defined here but is not frozen as the live contract until I2 proves it against the
 # queried GitHub repository settings (docs/plans/2026-08-30-fpp-attestation-ledger-v1-staged.md §5).
 
@@ -73,21 +80,44 @@ jobs:
           python -m ruff format --check scripts tests
           python -m mypy
 
-      - name: Run validator test suite
+      - name: Run validator test suite (the proposed code, including a maintenance PR's changes)
         run: python -m pytest -q
+
+      - name: Select the validators that judge this run
+        id: validators
+        env:
+          MODE: ${{ steps.ctx.outputs.mode }}
+          BASE_SHA: ${{ steps.ctx.outputs.base_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = "intake" ]; then
+            # Contributor PR: apply the rules as committed at the base, staged outside the checkout so the
+            # working tree still equals HEAD. A maintenance PR's own scripts are exercised by pytest above,
+            # not trusted to approve themselves.
+            git cat-file -e "${BASE_SHA}^{commit}"
+            mkdir -p "$RUNNER_TEMP/base-validators"
+            git archive "$BASE_SHA" scripts | tar -x -C "$RUNNER_TEMP/base-validators"
+            echo "dir=$RUNNER_TEMP/base-validators/scripts" >> "$GITHUB_OUTPUT"
+            echo "source=base ${BASE_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=scripts" >> "$GITHUB_OUTPUT"
+            echo "source=head" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Validate declarations
         env:
           MODE: ${{ steps.ctx.outputs.mode }}
           BASE_SHA: ${{ steps.ctx.outputs.base_sha }}
           CONTEXT: ${{ steps.ctx.outputs.context }}
+          VALIDATORS: ${{ steps.validators.outputs.dir }}
         run: |
           set -euo pipefail
+          echo "validators: ${{ steps.validators.outputs.source }}"
           if [ "$MODE" = "main" ]; then
-            python scripts/validate.py --mode main --all --context "$CONTEXT" --summary
+            python "$VALIDATORS/validate.py" --mode main --all --context "$CONTEXT" --summary
           else
             git cat-file -e "${BASE_SHA}^{commit}"
-            python scripts/validate.py --mode "$MODE" --all --base-ref "$BASE_SHA" --context "$CONTEXT"
+            python "$VALIDATORS/validate.py" --mode "$MODE" --all --base-ref "$BASE_SHA" --context "$CONTEXT"
           fi
 
       - name: Verify steward signatures and admission chains
@@ -95,10 +125,11 @@ jobs:
           MODE: ${{ steps.ctx.outputs.mode }}
           BASE_SHA: ${{ steps.ctx.outputs.base_sha }}
           CONTEXT: ${{ steps.ctx.outputs.context }}
+          VALIDATORS: ${{ steps.validators.outputs.dir }}
         run: |
           set -euo pipefail
           if [ "$MODE" = "main" ]; then
-            python scripts/verify-signatures.py --mode main --context "$CONTEXT"
+            python "$VALIDATORS/verify-signatures.py" --mode main --context "$CONTEXT"
           else
-            python scripts/verify-signatures.py --mode "$MODE" --base-ref "$BASE_SHA" --context "$CONTEXT"
+            python "$VALIDATORS/verify-signatures.py" --mode "$MODE" --base-ref "$BASE_SHA" --context "$CONTEXT"
           fi

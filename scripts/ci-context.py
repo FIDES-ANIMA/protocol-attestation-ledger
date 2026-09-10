@@ -11,6 +11,9 @@ Mode:
   pull_request into main from anywhere else                 -> intake
   anything else                                             -> fail closed (exit 2)
 
+The mode is derived from trust context only. Whether an intake PR is a declaration intake or a maintenance
+proposal is decided by validate.py from the committed diff (GOVERNANCE.md §5a), never from PR text here.
+
 Writes the context JSON consumed by validate.py/verify-signatures.py --context, and prints
 mode=, base_sha=, head_sha= lines (also appended to $GITHUB_OUTPUT when set).
 """

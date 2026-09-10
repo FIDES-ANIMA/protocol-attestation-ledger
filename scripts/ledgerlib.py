@@ -104,8 +104,32 @@ GITHUB_CONTACT_RE = re.compile(r"^github:([a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?)$
 SECRET_ARMOR_RE = re.compile(rb"-----BEGIN PGP (?:PRIVATE|SECRET) KEY BLOCK-----")
 PUBLIC_ARMOR_RE = re.compile(rb"-----BEGIN PGP PUBLIC KEY BLOCK-----")
 
-INTAKE_PROTECTED_PREFIXES = ("admissions/", "stewards/", "schema/", "scripts/", ".github/", "tests/")
-INTAKE_PROTECTED_FILES = {"requirements.txt", "requirements-dev.txt", "pyproject.toml", ".gitattributes", ".gitignore"}
+# Change classes for a contributor pull request (see GOVERNANCE.md §5a). A declaration intake PR changes only
+# declaration files; a maintenance PR changes only software/documentation paths; steward-only paths may never
+# change in a contributor PR; a PR that mixes declaration and maintenance paths must be split.
+CHANGE_CLASS_EMPTY = "empty"
+CHANGE_CLASS_DECLARATION = "declaration"
+CHANGE_CLASS_MAINTENANCE = "maintenance"
+CHANGE_CLASS_STEWARD_ONLY = "steward-only"
+CHANGE_CLASS_MIXED = "mixed"
+STEWARD_ONLY_PREFIXES = ("admissions/", "stewards/", "schema/")
+STEWARD_ONLY_FILES = {".gitattributes"}
+# Maintenance paths whose change alters the validation rules or the CI contract itself. They are still a
+# maintenance change, but the report names them so the steward reviews them explicitly and never lets the
+# contributor's copy of the validators be the sole authority for its own approval.
+RULES_SENSITIVE_PREFIXES = (".github/",)
+RULES_SENSITIVE_FILES = {
+    "scripts/ledgerlib.py",
+    "scripts/validate.py",
+    "scripts/verify-signatures.py",
+    "scripts/ci-context.py",
+    "scripts/prepare-admission.py",
+    "scripts/sign-admission.py",
+    "scripts/promote-admission.py",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "pyproject.toml",
+}
 SCAN_EXCLUDED_DIRS = {
     ".git",
     ".venv",
@@ -976,6 +1000,60 @@ def steward_transport_ok(context: Context, root: Path, report: Report, path: str
 
 def posix(path: str | Path) -> str:
     return PurePosixPath(str(path).replace("\\", "/")).as_posix()
+
+
+# --------------------------------------------------------------------------- change classification
+
+
+@dataclass
+class ChangeClassification:
+    """How a contributor pull request's diff is classified (GOVERNANCE.md §5a)."""
+
+    change_class: str
+    declaration_paths: list[str] = field(default_factory=list)
+    maintenance_paths: list[str] = field(default_factory=list)
+    steward_only_paths: list[str] = field(default_factory=list)
+    rules_sensitive_paths: list[str] = field(default_factory=list)
+
+
+def is_declaration_change_path(path: str) -> bool:
+    return path.startswith("attestations/") or path.startswith("revocations/")
+
+
+def is_steward_only_path(path: str) -> bool:
+    return path.endswith(".asc") or path in STEWARD_ONLY_FILES or any(path.startswith(p) for p in STEWARD_ONLY_PREFIXES)
+
+
+def is_rules_sensitive_path(path: str) -> bool:
+    return path in RULES_SENSITIVE_FILES or any(path.startswith(p) for p in RULES_SENSITIVE_PREFIXES)
+
+
+def classify_change_paths(paths: Iterable[str]) -> ChangeClassification:
+    """Sort changed paths into declaration, maintenance, and steward-only buckets and name the resulting class.
+
+    Steward-only paths make the whole change ``steward-only`` regardless of what else changed: a contributor
+    PR may never carry them. Otherwise a change touching both declaration and maintenance paths is ``mixed``
+    and must be split, because the two classes are reviewed and merged by different procedures.
+    """
+    result = ChangeClassification(change_class=CHANGE_CLASS_EMPTY)
+    for path in sorted(set(paths)):
+        if is_steward_only_path(path):
+            result.steward_only_paths.append(path)
+        elif is_declaration_change_path(path):
+            result.declaration_paths.append(path)
+        else:
+            result.maintenance_paths.append(path)
+            if is_rules_sensitive_path(path):
+                result.rules_sensitive_paths.append(path)
+    if result.steward_only_paths:
+        result.change_class = CHANGE_CLASS_STEWARD_ONLY
+    elif result.declaration_paths and result.maintenance_paths:
+        result.change_class = CHANGE_CLASS_MIXED
+    elif result.declaration_paths:
+        result.change_class = CHANGE_CLASS_DECLARATION
+    elif result.maintenance_paths:
+        result.change_class = CHANGE_CLASS_MAINTENANCE
+    return result
 
 
 def scan_secret_armor(root: Path, files: Iterable[str], report: Report) -> None:

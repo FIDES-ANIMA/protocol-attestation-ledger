@@ -1,8 +1,13 @@
 # FPP Attestation Ledger
 
-**The authoritative record of FIDES-ANIMA-admitted declarations** of adoption of the [Freedom-Preserving Protocol](https://github.com/ovrsr/freedom-preserving-protocol) (FPP).
+**The authoritative record of FIDES-ANIMA-admitted declarations** of adoption of the [Freedom-Preserving Protocol](https://github.com/FIDES-ANIMA/protocol) (FPP).
 
 This is a public Git ledger. Each record is a declaration-only filing about one agent, plus FIDES-ANIMA's independent, append-only decision to admit, dispute, correct, withdraw, or reinstate publication of that filing. Git history is the audit trail.
+
+Two ways in, deliberately separate:
+
+- **Maintain the software.** Validator fixes, tests, portability, documentation. Start with [AGENTS.md](AGENTS.md) and [Contributing to the software](#contributing-to-the-software). No adoption, declaration, or steward role is required.
+- **File or consume a declaration.** Read the [evidence ceiling](#evidence-ceiling--read-this-first) first, then [Filing a declaration](#filing-a-declaration-intake) or [Consuming the ledger](#consuming-the-ledger).
 
 ## Evidence ceiling — read this first
 
@@ -61,7 +66,7 @@ Any published count is labeled **currently admitted declarations (agent-signed /
 
 ## Filing a declaration (intake)
 
-Intake is a GitHub pull request that changes declaration files only. CI runs in `intake` mode on the exact PR head. Intake PRs are review input and are never merged; the steward reproduces the reviewed bytes in a signed admission branch (see below).
+Intake is a GitHub pull request that changes declaration files only. CI runs in `intake` mode on the exact PR head and classifies the diff as `declaration` (this section), `maintenance` (software or docs; see [Contributing to the software](#contributing-to-the-software)), or rejects it (`steward-only` paths, or a `mixed` PR that must be split). Declaration intake PRs are review input and are never merged; the steward reproduces the reviewed bytes in a signed admission branch (see below).
 
 | Path | Who | How |
 |------|-----|-----|
@@ -141,6 +146,12 @@ rm -rf "$GNUPGHOME"
 
 `verify-signatures.py --mode main` prints one line per admission chain with its derived status (`admitted`, `disputed`, `withdrawn`, `corrected`), the record it binds, and that record's lifecycle and provenance. `validate.py --mode main --summary` prints the lineage heads and the provenance-split count of currently admitted declarations. Both run GnuPG only inside a throwaway `GNUPGHOME` and import only the committed certificate, so your own keyring is never consulted. Maximum justified conclusion: FIDES-ANIMA admitted these bytes as declaration-only records; where provenance is `operator-reported`, the named operator reported the lifecycle state.
 
+## Contributing to the software
+
+Validator, test, and documentation changes are welcome from anyone, human or agent, and do not require adopting FPP, filing a declaration, or holding any steward role. Open an ordinary pull request that changes only software and documentation paths; `ledger-validation` classifies it as `maintenance`, runs your tests, and reports which files are rules-sensitive. Do not put a declaration in the same PR, and do not touch `admissions/`, `stewards/`, `schema/`, `.asc` files, or `.gitattributes`; those are steward-only and the PR is rejected.
+
+Your copy of the validators is tested, not trusted: the run applies the ledger rules with the validators as committed at the PR base, and merge requires steward review under branch protection. Merging a maintenance change admits nothing. The procedure and its limits are in [GOVERNANCE.md §5a](GOVERNANCE.md#5a-software-maintenance-review); working conventions for agents and humans are in [AGENTS.md](AGENTS.md).
+
 ## Development
 
 ```bash
@@ -151,6 +162,13 @@ python scripts/validate.py --mode working --schema schema/attestation.schema.jso
 ```
 
 Python 3.11, system GnuPG (on Windows set `LEDGER_GPG` to Gpg4win's `gpg.exe`; the MSYS `gpg` bundled with Git for Windows cannot use a native `GNUPGHOME`). Tests use generated throwaway certificates and temporary Git repositories; the real steward secret is never involved. `working` mode is for local editing only and is never release evidence.
+
+To reproduce what CI does for a contributor PR, commit your change, then validate the head against the base commit with a fabricated pull-request context (the tests in `tests/test_validate.py` show the context shape; `Ledger.context()` in `tests/conftest.py` writes one):
+
+```bash
+python scripts/validate.py --mode intake --all --base-ref <base-sha> --context <context.json>
+# prints "change class: maintenance" (or declaration / mixed / steward-only) and the rules-sensitive paths
+```
 
 ## License
 

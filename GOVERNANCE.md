@@ -45,7 +45,7 @@ A steward action preserves declaration bytes and `lifecycle_state`. CI proves th
 
 ## 5. Intake, admission, promotion
 
-1. **Intake PR.** A contributor (Paths A, B, D, F in README) opens a PR that changes declaration files only. CI runs in `intake` mode against the PR head: schema, lifecycle, history, provenance, and filing authority. Intake PRs are review input and are **never merged**.
+1. **Intake PR.** A contributor (Paths A, B, D, F in README) opens a PR that changes declaration files only. CI runs in `intake` mode against the PR head: schema, lifecycle, history, provenance, and filing authority. Declaration intake PRs are review input and are **never merged**. (Software and documentation proposals follow §5a instead; the validators classify each PR from its diff and reject one that mixes the two.)
 2. **Admission branch.** From current `main`, the steward runs `scripts/prepare-admission.py` (`query-intake`, then `build`), which re-queries the intake PR, re-runs the intake validators on the reviewed head, applies the reviewed declaration diff without changing a byte, and emits complete unsigned event JSON. Offline, `scripts/sign-admission.py` recomputes the displayed hashes from the manifest, signs `.record.asc` and each event `.json.asc` with the pinned signing subkey, and creates one Git commit signed by the same subkey on an `admission/*` branch in this repository. It is the only script that uses a secret key, and only from the steward's own `GNUPGHOME`.
 3. **Admission CI.** The `admission`-mode check must pass on that exact SHA. It verifies the pinned commit signature, unchanged reviewed bytes, every signature, every event chain, and the complete candidate tree exactly as `main` will.
 4. **Promotion.** `scripts/promote-admission.py` re-queries the PR, check run, and current `main`; requires `main` to be an ancestor of the candidate; and fast-forwards `main` to that SHA through a narrowly scoped steward ruleset bypass. Squash, rebase, server-side merge commits, force-push, and non-fast-forward updates are forbidden because they replace the tested, signed commit.
@@ -59,6 +59,36 @@ The same path applies to amendments, corrections, adoption withdrawals, admissio
 - `operator-reported` filings on the GitHub path require `operator.contact: github:<lowercase-login>`. The PR author and the actor of the final `opened`/`synchronize` event that produced the reviewed head must equal that login after lowercasing. For a fork, the head-repository owner must also match; for a branch in this repository, the branch must be under `intake/<login>/`. Any head change invalidates prior authority evidence. Workflow reruns do not supply authority.
 - Operator contacts that are not GitHub logins use out-of-band intake (Path F): a steward opens the PR, and the admission event records the request source and evidence.
 - Amendments and adoption withdrawals require the same authority class as the declaration they change.
+
+## 5a. Software maintenance review
+
+Declaration intake and software maintenance are different kinds of change and are reviewed by different procedures. Permission to propose a validator change is not permission to decide whether that change is trustworthy, to merge it, or to admit declarations.
+
+### Change classes
+
+`scripts/validate.py --mode intake` classifies every contributor pull request from its committed diff, never from PR text:
+
+| Class | Paths | Outcome |
+|-------|-------|---------|
+| `declaration` | only `attestations/`, `revocations/` | Declaration intake (§5); never merged |
+| `maintenance` | only software and documentation: `scripts/`, `tests/`, `docs/`, `.github/`, `README.md`, `GOVERNANCE.md`, `SCHEMA.md`, `CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, `requirements*.txt`, `pyproject.toml`, `.gitignore`, and similar | Maintenance review (below); may be merged |
+| `steward-only` | anything under `admissions/`, `stewards/`, `schema/`, any `.asc`, or `.gitattributes` | Rejected in any contributor PR |
+| `mixed` | declaration and maintenance paths together | Rejected; file two PRs |
+
+Within `maintenance`, changes to the validators, helper scripts, dependency manifests, or `.github/` are additionally reported as **rules-sensitive**. They remain maintenance changes, but the check output names the files so the reviewer reads the diff, not only the result.
+
+### What a maintenance PR can and cannot do
+
+- It may change how the ledger is validated, tested, documented, or operated. It may not add, modify, or remove a declaration, a signature, an admission event, a steward pin, the actor allowlist, or a schema. Those changes travel only on a steward-signed `admission/*` branch.
+- Its own code is **tested but not trusted**. The `ledger-validation` run executes the proposal's test suite (ruff, mypy, pytest) as review input. The ledger rules in that run are applied by the validators as committed at the PR's base, staged outside the checkout, so a contributor's edited `scripts/validate.py` is never the copy that judges its own admissibility. A `pull_request` workflow still executes the PR head's copy of `.github/workflows/validate.yml`; that is why a change under `.github/` is rules-sensitive and why the check result alone is not authority.
+- Merging is a steward decision under branch protection (§9): review of the diff, a re-run of the validators from a trusted checkout, then a rebase or squash that keeps linear history and a verified signature. Merging a maintenance PR admits nothing: `main`-mode validation revalidates the identical declaration tree, and no admission event is produced.
+- A maintenance change may not weaken a rule silently. A change to what intake or admission accepts is a policy change; state the justification in the PR, and expect the steward to hold it until GOVERNANCE.md and SCHEMA.md describe the new rule.
+
+### What maintainers are asked for
+
+Useful maintenance contributions include regression tests for existing rules, portability fixes (Windows GnuPG paths, Python versions), clearer failure messages, runbook corrections, and reproducible reports of validator behaviour that disagrees with this document. Report a validator that accepts something these documents forbid, or rejects something they allow, as an issue with the exact command and output.
+
+Contributing maintenance does not make anyone a steward, does not grant admission authority, and does not require adopting FPP or filing a declaration.
 
 ## 6. Disputes and corrections
 
